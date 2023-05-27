@@ -3,14 +3,14 @@
 词法分析器scanner
 语法分析器grammar
 
-## 目前支持的SQL情况：
-支持DDL:
+## 目前支持的SQL情况（tag: toadb_01）：
+- 支持DDL:
 create table name (column type,..);
 drop table name;
 
-支持DML:
+- 支持DML:
 select */ column, ... from tablename;
-insert into tablename(column,...) values(columnvalue,...);
+
 
 ## 开发指南
 词法分析器和语法分析器使用了著名的开源工具flex和bison组合，flex能够按照正则表达式规则解析出关键字，标识符，以及其它字符串；而bison则通过它的语法推导规则，将各个部分解析成一个个表达式，每个表达式形成逆波兰式的抽象语法树。
@@ -25,8 +25,41 @@ insert into tablename(column,...) values(columnvalue,...);
 
 
 
-# 数据库SQL执行
 
+# 编译执行
+## 安装编译工具
+- 需要安装gcc ，推荐8.5版本及以上
+- 安装 flex 词法解析器， 推荐2.6.1版本及以上
+- 安装 bsion 语法解析器，  推荐3.0.4版本及以上
+
+## 编译词法与语法解析器
+在toadb 当前目录下执行
+> make parser
+
+## 编译数据库
+在toadb 当前目录下执行
+> make
+
+## 运行
+在toadb 当前目录下执行
+./toadb-0-01
+create table abc (int a, int c);
+ident :abc
+ident :int
+ident :a
+attrdef
+ident :int
+ident :c
+attrdef
+sql: create
+create stmt
+drop table ata;
+ident :ata
+sql drop
+drop stmt
+^C
+
+最后是ctrl+c结束，输入SQL回车后，打印解析内容
 
 # roadmap
 
