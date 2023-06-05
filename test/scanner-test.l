@@ -16,6 +16,7 @@ int test = 0;
 %option noyywrap
 %option yylineno
 %option case-insensitive
+%option header-file="scanner-test.h"
 
 /* operators */
 endtag      [;]*

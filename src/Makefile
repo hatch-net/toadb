@@ -27,9 +27,11 @@ OBJS = ${patsubst %.c, %.o, $(SOURCE)}
 # .h files take place all directories.
 INC = ${foreach dir, $(DIRS), -I$(dir)}
 
-SCANNER = scanner.c
-PARSER = grammar.c
-PARSER_H = grammar.h
+PARSER_DIR=${topdir}/parser
+SCANNER = ${PARSER_DIR}/scanner.c
+PARSER = ${PARSER_DIR}/grammar.c
+PARSER_H = ${PARSER_DIR}/grammar.h
+SCANNER_H = scanner.h
 
 ##########################################
 # test programme
@@ -52,7 +54,7 @@ CFLAGS += ${LDFLAGS}
 CFLAGS += ${DEBUG_FLAGS}
 
 # compile start
-.PHONY: all clean 
+.PHONY: all clean parser
 all: $(default) $(builddir) $(OBJS) $(TARGET) 
 
 #build dir create
@@ -74,12 +76,16 @@ default:
 	echo -e $(INC)
 
 parser: $(PARSER) $(SCANNER)
-$(PARSER): $(topdir)/grammar.y
+$(PARSER): ${PARSER_DIR}/grammar.y
+	cd ${PARSER_DIR}/
 	bison --defines=${PARSER_H} -o $@ $<
+	cd -
 
-$(SCANNER): $(topdir)/scanner.l
+$(SCANNER): ${PARSER_DIR}/scanner.l
+	cd ${PARSER_DIR}/
 	flex -o $@ $<
+	cd -
 	
 clean:
-	rm -rf ${TARGET} ${OBJS} ${builddir} $(topdir)/*.o ${SCANNER} ${PARSER} ${PARSER_H}
+	rm -rf ${TARGET} ${OBJS} ${builddir} $(topdir)/*.o ${SCANNER} ${PARSER} ${PARSER_H} ${SCANNER_H}
 	
