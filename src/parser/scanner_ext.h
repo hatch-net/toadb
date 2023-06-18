@@ -17,6 +17,7 @@ typedef struct SCANNER_EXTRE_DATA
 typedef union YYVAL_TYPE
 {
     char *sval;
+    int ival;
     char op;
     PList list;
     PNode node;

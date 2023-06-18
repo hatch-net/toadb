@@ -1,5 +1,5 @@
 /*
- *	toadb main 
+ *	toadb parser 
  * Copyright (C) 2023-2023, senllang
 */
 
@@ -9,4 +9,6 @@
 #include "node.h"
 
 List* raw_parser(char *sqlstr);
+int ReleaseParserTreeResource(List *tree);
+
 #endif

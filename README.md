@@ -1,3 +1,27 @@
+# 更新记录
+## updated by 2023/6/17 
+
+- 支持四条SQL语句的执行，分别是
+
+> create table tablename(columnname type, ...);  
+>  drop table tablename;  
+
+> insert into tablename(columnname,...) values(val...);  
+>  select columnname,... from tablename;  
+
+当前查找支持全部列表，不支持部分列名的过滤。  
+
+- 支持的类型:   
+
+> int/integer,  整型数字，如88，99等；  
+> char, 单个字符，如'a','b'等，用‘’包括起来；  
+> varchar, 字符串，也是用‘’包括；  
+> bool，布尔值，用数字表示，0是false，非零为true，显示为F/T；  
+
+
+## updated by 2023/5/26  
+完成flex/bison语法解析的框架，能够解析几个关键词，字符串，数字。  
+
 # 数据库SQL解析
 分为两部分，
 词法分析器scanner
@@ -10,7 +34,7 @@ drop table name;
 
 - 支持DML:
 select */ column, ... from tablename;
-
+insert into tablename(column...) values(...);
 
 # 编译执行
 ## 安装编译工具
@@ -19,36 +43,79 @@ select */ column, ... from tablename;
 - 安装 bsion 语法解析器，  推荐3.0.4版本及以上
 
 ## 编译词法与语法解析器
-在toadb 当前目录下执行
+在toadb/src 当前目录下执行
 > make parser
 如果没有做修改的话，可以跳过这一步，因为库中已经包含编译后的文件
 
 ## 编译数据库
-在toadb 当前目录下执行
+在toadb/src 目录下执行
 > make
 
-## 运行
-在toadb 当前目录下执行
-./toadb-0-01
-create table abc (int a, int c);
-ident :abc
-ident :int
-ident :a
-attrdef
-ident :int
-ident :c
-attrdef
-sql: create
-create stmt
-drop table ata;
-ident :ata
-sql drop
-drop stmt
-^C
+## 使用教程
+在toadb/src 当前目录下执行
 
-最后是ctrl+c结束，输入SQL回车后，打印解析内容
+* 开始运行  
+```
+[senllang@localhost src]$ ./toadb-0-01
+Welcome to Toad Database Manage System.
+```
+
+* 创建表   
+```
+toadb> create table student(sid integer, sname varchar, ssex char);
+```
+
+* 查询表   
+```
+toadb> select sid,sname,ssex from student;
+return 0 rows
+```
+
+* 向表中插入数据     
+```
+toadb> insert into student(sid,sname,ssex) values(1,'lilei','M');
+```
+
+* 单行数据查询   
+```
+toadb> select sid,sname,ssex from student;
+|sid-|sname|ssex|
+|   1|lilei|   M|
+return 1 rows
+```
+
+* 插入多行数据      
+`
+toadb> insert into student(sid,sname,ssex) values(2,'hanmeimei','F');
+toadb> insert into student(sid,sname,ssex) values(3,'richel','F');
+`
+
+* 查询多行数据      
+```
+toadb>  select sid,sname,ssex from student;
+|sid-|sname----|ssex|
+|   1|    lilei|   M|
+|   2|hanmeimei|   F|
+|   3|   richel|   F|
+return 3 rows
+```
+
+* 删除表      
+```
+toadb> drop table student;
+```
+
+* 退出toadb     
+```
+toadb> quit
+```
+
+最后输入quit 回车后，退出toadb client。
 
 # roadmap
+
+## 0.2版本开发
+
 
 ## 0.1版本开发
 
@@ -83,3 +150,6 @@ drop stmt
 #### 表文件格式定义
 文件以块为单位存储，第一个块是存储元数据信息，也就是数据字典内容；
 * 先是表信息，包括块大小，当前块号，列（列名，列类型）列表，有效块的记录：块数量；
+
+
+

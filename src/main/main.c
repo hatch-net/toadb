@@ -4,23 +4,17 @@
 */
 #include <stdio.h>
 #include <stdlib.h>
-#include "parser.h"
-#include "node.h"
+#include <string.h>
+#include "toadmain.h"
+
+char *DataDir = "./toadbtest";
 
 int main(int argc, char *argv[])
 {
-	char str[1024];
-	List *parserTree = NULL;
-
-	printf("input sql please \n");
+	printf("Welcome to Toad Database Manage System.\n")	;
 
 	if(argc > 1)
-		sprintf(str, "%s", argv[1]);
-	else
-		return -1;
-		
-	parserTree = raw_parser(str);
-	travelParserTree(parserTree);
-	
+		DataDir = strdup(argv[1]);
+	toadbMain(argc, argv);
 	return 0;
 }

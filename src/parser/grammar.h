@@ -52,8 +52,12 @@ extern int yydebug;
     DELETE = 262,
     DROP = 263,
     INSERT = 264,
-    UPDATE = 265,
-    IDENT = 266
+    INTO = 265,
+    VALUES = 266,
+    UPDATE = 267,
+    IDENT = 268,
+    STRING = 269,
+    DIGEST = 270
   };
 #endif
 
@@ -65,11 +69,12 @@ union YYSTYPE
 #line 25 "parser/grammar.y" /* yacc.c:1909  */
 
     char *sval;
+    int  ival;
     char op;
     PList list;
     PNode node;
 
-#line 73 "./parser/grammar.h" /* yacc.c:1909  */
+#line 78 "./parser/grammar.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

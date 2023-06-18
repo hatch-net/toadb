@@ -1,5 +1,5 @@
 /*
- *	toadb main 
+ *	toadb parser 
  * Copyright (C) 2023-2023, senllang
 */
 #include <stdio.h>
@@ -39,6 +39,7 @@ List* raw_parser(char *sqlstr)
     while(tag != ';')
     {
         value.sval = NULL;
+        value.ival = 0;
         tag = yylex(&value, scannerinfo);
         printf("tag:%d, value:%s\n", tag, value.sval == NULL? "" : value.sval);
     }
@@ -51,4 +52,11 @@ List* raw_parser(char *sqlstr)
 
     yylex_destroy(scannerinfo);
     return parserinfo->parserTree;
+}
+
+int ReleaseParserTreeResource(List *tree)
+{
+    if(NULL == tree)
+        return -1;
+    return 0;
 }

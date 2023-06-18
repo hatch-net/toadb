@@ -14,8 +14,22 @@ typedef enum NodeType
 	T_List,
 	T_CreateStmt,
     T_ColumnDef,
+	T_DropStmt,
+	T_InsertStmt,
+	T_AttrName,
+	T_ValuesData,
+	T_SelectStmt,
+	T_TableRefName,
 	T_END
 }NodeType;
+
+typedef union Data
+{
+	void *pData;
+	int  iData;
+	char cData;
+	double dData;
+}Data;
 
 typedef union CellValue
 {
@@ -63,11 +77,54 @@ typedef struct DropStmt
     /* tablename , other optional ... */
 	NodeType type;
 	char *tableName;
-
 }DropStmt, *PDropStmt;
+
+typedef struct InsertStmt
+{
+	NodeType type;
+	char *tableName;
+	List *attrNameList;
+	List *valuesList;
+}InsertStmt, *PInsertStmt;
+
+typedef struct AttrName
+{
+	NodeType type;
+	char *attrName;
+}AttrName, *PAttrName;
+
+
+typedef struct TableRefName
+{
+	NodeType type;
+	char *tblRefName;
+}TableRefName, *PTableRefName;
+
+typedef struct ValuesData
+{
+	NodeType type;
+	Data value;
+}ValuesData, *PValuesData;
+
+
+typedef struct SelectStmt
+{
+	NodeType type;
+	int selectAll;
+	List *columnList;
+	List *tblList;
+}SelectStmt, *PSelectStmt;
+
 
 PNode CreateNode(int size, NodeType type);
 PList CreateCell(PList list);
 
 void travelParserTree(PList list);
+
+/* 根据表名获取取 attrnode */
+int GetAtrrIndexByName(char *attrName, PList list);
+/* 根据atrrnode index， 获取对应的values */
+PValuesData GetDataByIndex(int index, PList list);
+
+
 #endif

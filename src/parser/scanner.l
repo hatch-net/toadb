@@ -25,8 +25,8 @@
 
 #include "scanner_ext.h"
 #include "grammar.h"
-
-
+// #define log printf
+#define log 
 %}
 
 /* operators */
@@ -36,6 +36,8 @@ nonewline   [^\n\r]
 comment     ("--"{nonewline}*)
 whitespace		({space}+|{comment})
 identify    [a-zA-Z][a-zA-Z0-9_]*
+string      [']+[a-zA-Z0-9_]*[']+
+digest      [-]?[0-9]+
 
 %%
 SELECT  { 
@@ -48,21 +50,42 @@ CREATE  {
             return CREATE; 
         }
 TABLE	{
-		return TABLE;
-	}
+		    return TABLE;
+	    }
 UPDATE  {
             return UPDATE; 
         }
 INSERT  {
             return INSERT; 
         }
+INTO    {
+            return INTO; 
+        }
+VALUES  {
+            return VALUES; 
+        }    
 DELETE  {
             return DELETE; 
         }
 DROP    {
             return DROP; 
         }
-{identify}        {
+{string}        {
+                    int len = 0;
+
+                    /* skip ' charactor */
+                    yylval->sval = strdup(yytext+1);
+                    len = strlen(yylval->sval);
+                    yylval->sval[len-1] = '\0';
+                    log("string :%s\n", yylval->sval);
+                    return STRING;
+                }
+{digest}        {
+                    yylval->ival = atoi(yytext);
+                    log("digest :%d\n", yylval->ival);
+                    return DIGEST;
+                }
+{identify}      {
                     yylval->sval = strdup(yytext);
                     return IDENT;
                 }
