@@ -30,7 +30,6 @@
 %}
 
 /* operators */
-operator    [-+&~|^/%*().!,;]
 space       [ \t\n\r\f]
 nonewline   [^\n\r]
 comment     ("--"{nonewline}*)
@@ -38,6 +37,16 @@ whitespace		({space}+|{comment})
 identify    [a-zA-Z][a-zA-Z0-9_]*
 string      [']+[a-zA-Z0-9_]*[']+
 digest      [-]?[0-9]+
+
+equals_greater	"=>"
+less_equals		"<="
+greater_equals	">="
+less_greater	"<>"
+not_equals		"!="
+
+self			[,()\[\].;\:\+\-\*\/\%\^\<\>\=]
+op_chars		[\~\!\@\#\^\&\|\`\?\+\-\*\/\%\<\>\=]
+operator		{op_chars}+
 
 %%
 SELECT  { 
@@ -70,6 +79,15 @@ DELETE  {
 DROP    {
             return DROP; 
         }
+WHERE   {
+            return WHERE; 
+        }
+AND    {
+            return AND; 
+        }
+OR    {
+            return OR; 
+        }                        
 {string}        {
                     int len = 0;
 
@@ -89,7 +107,7 @@ DROP    {
                     yylval->sval = strdup(yytext);
                     return IDENT;
                 }
-{operator}       {
+{self}       {
                     return yytext[0];
                 }
 {whitespace}      {

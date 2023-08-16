@@ -17,12 +17,18 @@
 static void ExecutorPlan(PList list)
 {
     PListCell tmpCell = NULL;
+    PPortal portal = NULL;
+    char *pbuf = NULL;
+    int ret = 0;
 
     if(NULL == list)
     {
         log("NULL tree\n");
         return;
     }
+
+    portal = CreatePortal();
+    pbuf = portal->buffer;
 
     /* list cell node show */
     for(tmpCell = list->head; tmpCell != NULL; tmpCell = tmpCell->next)
@@ -37,21 +43,24 @@ static void ExecutorPlan(PList list)
                 {
                     PCreateStmt createstmt = (PCreateStmt)node;
                     log("exec T_CreateStmt Node: tablename:%s \n", createstmt->tableName);
-                    ExecCreateTable(createstmt);
+                    ret = ExecCreateTable(createstmt, portal);
+                    snprintf(pbuf, PORT_BUFFER_SIZE, "Create table result %d", ret);
                 }
             break;
             case T_DropStmt:
                 {
                     PDropStmt dropstmt = (PDropStmt)node;
                     log("exec T_DropStmt Node: drop table :%s \n", dropstmt->tableName);
-                    ExecDropTable(dropstmt);
+                    ret = ExecDropTable(dropstmt, portal);
+                    snprintf(pbuf, PORT_BUFFER_SIZE, "Drop table result %d", ret);
                 }
             break;
             case T_InsertStmt:
                 {
                     PInsertStmt insertstmt = (PInsertStmt)node;
                     log("T_InsertStmt Node: table :%s \n", insertstmt->tableName);
-                    ExecInsertStmt(insertstmt);
+                    ret = ExecInsertStmt(insertstmt, portal);
+                    snprintf(pbuf, PORT_BUFFER_SIZE, "Insert into %d rows", ret);
                 }
             break;
 
@@ -60,15 +69,17 @@ static void ExecutorPlan(PList list)
                     PSelectStmt stmt = (PSelectStmt)node;
                     log("T_SelectStmt Node: \n");
 
-                    ExecSelectStmt(stmt);
+                    ret = ExecSelectStmt(stmt, portal);
                 }
             break;
             
             default:
             break;
         }
+        SendToPortal(portal);
     }
 
+    EndPort(portal);
     return;
 }
 

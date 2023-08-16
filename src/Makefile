@@ -16,12 +16,16 @@ TARGET = toadb-${VERSION_H}-${VERSION_L}
 topdir = .
 SRC_DIR=$(topdir)
 
+# filter-out source code directory 
+OUT_SRC_DIR = $(topdir)/tools
+OUT_DIR = $(shell find $(OUT_SRC_DIR) -maxdepth 5 -type d)
+DIR_DISP = $(foreach dir, $(OUT_DIR), $(wildcard $(dir)/*.c))
+
 # search all directory and subdirectory
 DIRS = $(shell find $(SRC_DIR) -maxdepth 5 -type d)
 
-
 # general source file list , and objects list
-SOURCE = $(foreach dir, $(DIRS), $(wildcard $(dir)/*.c))
+SOURCE = $(filter-out $(DIR_DISP), $(foreach dir, $(DIRS), $(wildcard $(dir)/*.c)))
 OBJS = ${patsubst %.c, %.o, $(SOURCE)}
 
 # .h files take place all directories.
@@ -39,8 +43,8 @@ builddir = $(topdir)/build
 
 ##########################################
 ##########################################
-DEFINES += -DTEST_PRO
-LDFLAGS += -lpthread
+DEFINES += -DSTORAGE_FORMAT_PAX -DMEM_DEBUG
+# LDFLAGS += -lpthread
 DEBUG_FLAGS = -g
 ##########################################		
 		
@@ -70,10 +74,11 @@ $(TARGET):$(topdir)/*.o
 
 # show various value
 default:
-	echo -e $(DIRS)
-	echo -e $(SOURCE)
-	echo -e $(OBJS)
-	echo -e $(INC)
+	@echo -e "DIRS "$(DIRS)
+	@echo -e "SOURCE "$(SOURCE)
+	@echo -e "OBJS "$(OBJS)
+	@echo -e "INC "$(INC)
+	@echo -e "DIR_DISP "$(DIR_DISP)
 
 parser: $(PARSER) $(SCANNER)
 $(PARSER): ${PARSER_DIR}/grammar.y

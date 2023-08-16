@@ -41,6 +41,9 @@
 %token INTO
 %token VALUES
 %token UPDATE
+%token WHERE
+%token AND
+%token OR
 %token <sval> IDENT
 %token <sval> STRING
 %token <ival> DIGEST

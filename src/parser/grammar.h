@@ -55,9 +55,12 @@ extern int yydebug;
     INTO = 265,
     VALUES = 266,
     UPDATE = 267,
-    IDENT = 268,
-    STRING = 269,
-    DIGEST = 270
+    WHERE = 268,
+    AND = 269,
+    OR = 270,
+    IDENT = 271,
+    STRING = 272,
+    DIGEST = 273
   };
 #endif
 
@@ -74,7 +77,7 @@ union YYSTYPE
     PList list;
     PNode node;
 
-#line 78 "./parser/grammar.h" /* yacc.c:1909  */
+#line 81 "./parser/grammar.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

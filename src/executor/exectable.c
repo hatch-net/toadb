@@ -7,52 +7,61 @@
 #include "exectable.h"
 #include "executor.h"
 #include "tables.h"
-#include "portal.h"
+
 #include "seqscan.h"
+#include "tfile.h"
+#include "execModifyTable.h"
 
 /* printf snprintf */
 #include <stdio.h>
 #include <string.h>
-
-/* file operator */
-#include <fcntl.h>           /* Definition of AT_* constants */
-#include <unistd.h>
+#include <stdlib.h>
 
 #include <errno.h>
 
 #define log printf
 extern char *DataDir;
 
-static int CreateTableFile(char *filename, int mode);
-static int DeleteTableFile(char *filename);
-
 /*
  * executor of table create.
  * list is a tree of parser.
 */
-int ExecCreateTable(PCreateStmt stmt)
+int ExecCreateTable(PCreateStmt stmt, PPortal portal)
 {
     PColumnDef column = NULL;
     PListCell tmpCell = NULL;
     char pagebuffer[PAGE_MAX_SIZE] = {0};
     PPageDataHeader pageheader = (PPageDataHeader)pagebuffer;
-    PTableMetaInfo tableinfo = (PTableMetaInfo) (pagebuffer + sizeof(PageDataHeader));
+    PTableMetaInfo tableinfo = (PTableMetaInfo) (pagebuffer + PAGE_DATA_HEADER_SIZE);
     int i = 0;
     int tablefile = -1;
-
+    TableList tbl_temp = {0};
+    int ret = 0;
+    int tableType = 0;
+    
     if(NULL == stmt)
     {
         log("create table stmt is NULL\n");
         return -1;
     }
 
+#ifdef STORAGE_FORMAT_NSM
+    tableType = ST_NSM << STORAGE_TYPE_SHIFT;
+#endif
+#ifdef STORAGE_FORMAT_PAX
+    tableType = ST_PAX << STORAGE_TYPE_SHIFT;
+#endif
+
     /* initialize table infomastion to scan list */
     pageheader->header.pageVersion = PAGE_VERSION;
-    pageheader->header.pageType = PAGE_HEADER;
-    pageheader->header.pageNum = 0x01;
+    pageheader->header.pageType = PAGE_HEADER | tableType;
+    pageheader->header.pageNum = PAGE_HEAD_PAGE_NUM;
+    pageheader->pageCnt = PAGE_HEAD_PAGE_NUM;
 
     snprintf(tableinfo->tableName, NAME_MAX_LEN, "%s", stmt->tableName);
-
+    tableinfo->tableType = tableType;
+    tableinfo->tableId = GetObjectId();
+    
     /* column info */
     for(tmpCell = stmt->ColList->head; tmpCell != NULL; tmpCell = tmpCell->next)
     {
@@ -74,6 +83,8 @@ int ExecCreateTable(PCreateStmt stmt)
         i++;
     }
     tableinfo->colNum = i;
+    pageheader->dataOffset = PAGE_DATA_HEADER_SIZE;
+    pageheader->dataEndOffset = sizeof(TableMetaInfo) + sizeof(ColumnDefInfo) * i;
 
     /* create table file */
     tablefile = CreateTableFile(tableinfo->tableName, 0666);
@@ -84,42 +95,32 @@ int ExecCreateTable(PCreateStmt stmt)
     }
 
     /* initialize table file */
-    write(tablefile, pagebuffer, PAGE_MAX_SIZE);
-
-    /* end of executor, close and release resources */
-    close(tablefile);
-
-    return 0;
-}
-
-static int CreateTableFile(char *filename, int mode)
-{
-    int fd;
-    char filepath[1024];
-
-    snprintf(filepath, 1024, "%s/%s", DataDir, filename);
-
-    // 检查文件是否存在
-    if (access(filepath, F_OK) == 0) 
+    tbl_temp.tbl_fd = tablefile;
+    ret = FlushBuffer(&tbl_temp, pagebuffer);
+    if(ret < 0)
     {
-        log("table file %s already exist. \n", filepath);
+        log("exec create %s table failure,errno[%d].\n", tableinfo->tableName, ret);
         return -1;
     }
-
-    // 以二进制形式打开文件
-    fd = open(filepath, O_RDWR | O_CREAT, mode);
-    if (fd == -1) 
+    
+    smgrClose(tbl_temp.tbl_fd);
+    
+    /* init group file and open */
+    ret = TableCreate(tableinfo->tableName, GROUP_FORK);
+    if (ret < 0)
     {
-        log("create file %s error, maybe space not enough\n", filepath);
-        return -1;
+        log("create %s group file failure.\n", tableinfo->tableName);
     }
 
-    return fd;
+    return ret;
 }
 
-int ExecDropTable(PDropStmt stmt)
+
+int ExecDropTable(PDropStmt stmt, PPortal portal)
 {
     int ret = 0;
+    PTableList tblInfo = NULL;
+
     if(NULL == stmt)
     {
         log("drop table stmt is NULL\n");
@@ -127,71 +128,24 @@ int ExecDropTable(PDropStmt stmt)
     }
 
     /* find file */
+    tblInfo = GetTableInfo(stmt->tableName);
+    if(NULL == tblInfo)
+    {
+        log("drop table %s failure, It's not exist.\n",stmt->tableName);
+        return -1;
+    }
+
     /* delete file */
-    ret = DeleteTableFile(stmt->tableName);
-    if(0 != ret)
-    {
-        log("exec drop %s table failure.\n", stmt->tableName);
-        return -1;
-    }
+    ret = TableDrop(tblInfo);
+    
+    ReleaseTblInfo(tblInfo);
     return ret;
 }
 
-static int DeleteTableFile(char *filename)
-{
-    int ret = 0;
-    char filepath[1024];
-
-    snprintf(filepath, 1024, "%s/%s", DataDir, filename);
-
-    // 检查文件是否存在
-    if (access(filepath, F_OK) != 0) 
-    {
-        log("table file %s is not exist. \n", filepath);
-        return -1;
-    }
-
-    // 以二进制形式打开文件
-    ret = unlink(filepath);
-    if (ret != 0) 
-    {
-        log("create file %s ,errno %d \n", filepath, errno);
-        return -1;
-    }
-
-    return ret;
-}
-
-int OpenTableFile(char *filename, int mode)
-{
-    int fd;
-    char filepath[1024];
-
-    snprintf(filepath, 1024, "%s/%s", DataDir, filename);
-
-    // 检查文件是否存在
-    if (access(filepath, F_OK) != 0) 
-    {
-        log("table file %s is not exist. \n", filepath);
-        return -1;
-    }
-
-    // 以二进制形式打开文件
-    fd = open(filepath, O_RDWR, mode);
-    if (fd == -1) 
-    {
-        log("open file %s error, errno[%d]\n", filepath, errno);
-        return -1;
-    }
-
-    return fd;
-}
-
-int ExecInsertStmt(PInsertStmt stmt)
+int ExecInsertStmt(PInsertStmt stmt, PPortal portal)
 {
     PTableList tblInfo = NULL;
     PTableRowData rowDataInsert = NULL;
-    PPageDataHeader pageInsert = NULL;
     int ret = 0;
 
     if(NULL == stmt)
@@ -207,22 +161,15 @@ int ExecInsertStmt(PInsertStmt stmt)
         log("insert table failure.\n");
         return -1;
     }
-
+    
     /* TODO check attrlist  and values number is equal. */
 
     /* form row data */
     rowDataInsert = FormRowData(tblInfo->tableDef, stmt);
 
-    /* there we find free space. */
-    pageInsert = GetSpacePage(tblInfo, rowDataInsert->size, PAGE_NEW);
+    ret = ExecModifyTable(tblInfo, rowDataInsert, T_InsertStmt);
 
-    /* row data will be writed through to the table file. */
-    ret = WriteRowData(tblInfo, pageInsert, rowDataInsert);
-    if(ret != 0)
-    {
-        log("write row to page failure.[%d]\n", ret);
-    }
-
+    FreeMem(rowDataInsert);
     return ret;
 }
 
@@ -320,50 +267,86 @@ int ClientFormRow(PScan scanHead, PSelectStmt stmt)
                         case INT:
                         case INTEGER:
                         {
+                            int *tmp = NULL;
+                            char digit[128];
+                            int size = 0;
+                            if(rawRow->columnData[attrIndex] != NULL)
+                            {
+                                tmp = (int *)(rawRow->columnData[attrIndex]->data);
+                                snprintf(digit, 128, "%d", *tmp);
+                                size = strlen(digit);
+                            }
+
                             if(showPhare)
                             {
-                                int *tmp = (int *)(rawRow->columnData[attrIndex]->data);
                                 snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*d", rowMaxSize[attrIndex], *tmp);  
                                 bufOffset += rowMaxSize[attrIndex] + 1;                              
                             }
                             else
-                                rowMaxSize[attrIndex] = sizeof(int);
+                            {
+                                if(size > rowMaxSize[attrIndex])
+                                    rowMaxSize[attrIndex] = size + 1;
+                            }
                         }
                         break;
                         case VARCHAR:
                         {
+                            int size = 0;
+                            char *data = NULL;
+                            if (rawRow->columnData[attrIndex] != NULL)
+                            {
+                                data = rawRow->columnData[attrIndex]->data;
+                                size = rawRow->columnData[attrIndex]->size;
+                            }
+
                             if(showPhare)
                             {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*s", rowMaxSize[attrIndex], rawRow->columnData[attrIndex]->data);
+                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*s", rowMaxSize[attrIndex], data);
                                 bufOffset += rowMaxSize[attrIndex] + 1; 
                             }
                             else
                             {
-                                if(strlen(rawRow->columnData[attrIndex]->data) > rowMaxSize[attrIndex])
-                                    rowMaxSize[attrIndex] = strlen(rawRow->columnData[attrIndex]->data);
+                                if(size > rowMaxSize[attrIndex])
+                                    rowMaxSize[attrIndex] = size;
                                 
                             }
                         }
                         break;
                         case CHAR:
+                        {
+                            char data = '\0';
+                            if (rawRow->columnData[attrIndex] != NULL)
+                            {
+                                data = rawRow->columnData[attrIndex]->data[0];
+                            }
+
                             if(showPhare)
                             {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*c", rowMaxSize[attrIndex],rawRow->columnData[attrIndex]->data[0]);
+                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*c", rowMaxSize[attrIndex],data);
                                 // fillBack(pbuf+bufOffset+2, ' ', rowMaxSize[attrIndex] - 1);
                                 bufOffset += rowMaxSize[attrIndex] + 1; 
                             }
                             else
                                 rowMaxSize[attrIndex] = sizeof(char);
+                        }
                         break;
                         case BOOL:
+                        {
+                            char data = '\0';
+                            if (rawRow->columnData[attrIndex] != NULL)
+                            {
+                                data = rawRow->columnData[attrIndex]->data[0];
+                            }
+
                             if(showPhare)
                             {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*c", rowMaxSize[attrIndex],rawRow->columnData[attrIndex]->data[0]);
+                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*c", rowMaxSize[attrIndex],data);
                                 // fillBack(pbuf+bufOffset+2, ' ', rowMaxSize[attrIndex] - 1);
                                 bufOffset += rowMaxSize[attrIndex] + 1; 
                             }
                             else
                                 rowMaxSize[attrIndex] = sizeof(char);
+                        }
                         break;
                         default:
                         break;
@@ -381,7 +364,7 @@ int ClientFormRow(PScan scanHead, PSelectStmt stmt)
             showPhare++;
         }while(showPhare < SHOW_PHARE_MAX);
 
-        snprintf(pbuf, PORT_BUFFER_SIZE , "return %d rows", showNum);
+        snprintf(pbuf, PORT_BUFFER_SIZE , "total %d rows", showNum);
         SendToPortal(scanHead->portal);
 
         if(NULL != rowMaxSize)
@@ -397,12 +380,10 @@ int ClientFormRow(PScan scanHead, PSelectStmt stmt)
 /*
  * select 执行入口
  */
-int ExecSelectStmt(PSelectStmt stmt)
+int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
 {
-
     PListCell tmpCell = NULL;
     Scan scanState;
-    PPortal portal = NULL;
     int num = 0;
 
     if(NULL == stmt)
@@ -420,7 +401,7 @@ int ExecSelectStmt(PSelectStmt stmt)
     memset(&scanState, 0x00, sizeof(Scan));
 
     /* create portal, which will store all rows. */
-    portal = CreatePortal(stmt);
+    InitSelectPortal(stmt, portal);
     scanState.portal = portal;
 
     /* we will scan all tables, from table head to table tail. */
@@ -433,9 +414,6 @@ int ExecSelectStmt(PSelectStmt stmt)
 
     /* form temp row data , which will be shown on client. */
     ClientFormRow(&scanState, stmt);
-
-
-   // EndPort(portal);
 
     return 0;
 }

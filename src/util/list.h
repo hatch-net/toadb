@@ -19,7 +19,8 @@ typedef struct dListCell
     void *value;
 }DLCell, *PDLCell;
 
-
+#define INIT_DLIST_NODE(list) (list.prev = &list, list.next = &list)
 int AddDListTail(PDList *list, PDList cell);
+int DelDListNode(PDList *list, PDList cell);
 int AddCellToListTail(PDList *head, void *ptr);
 #endif

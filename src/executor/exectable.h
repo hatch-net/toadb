@@ -8,6 +8,7 @@
 #include "node.h"
 #include "buffer.h"
 #include "list.h"
+#include "portal.h"
 
 #define MAX_ROW_DATA 1024
 
@@ -27,14 +28,15 @@ typedef struct ColumnSelectList
 
 
 
-int ExecCreateTable(PCreateStmt stmt);
+int ExecCreateTable(PCreateStmt stmt, PPortal portal);
 
-int ExecDropTable(PDropStmt stmt);
+int ExecDropTable(PDropStmt stmt, PPortal portal);
 
-int ExecInsertStmt(PInsertStmt stmt);
+int ExecInsertStmt(PInsertStmt stmt, PPortal portal);
 
-int ExecSelectStmt(PSelectStmt stmt);
+int ExecSelectStmt(PSelectStmt stmt, PPortal portal);
 
 int OpenTableFile(char *filename, int mode);
+
 
 #endif

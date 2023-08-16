@@ -6,6 +6,16 @@
 #ifndef HAT_TOADMAIN_H_H
 #define HAT_TOADMAIN_H_H
 
+#define MAX_COMMAND_LENGTH 1024
+
 int toadbMain(int argc, char *argv[]) ;
 
+int ToadMainEtry(char *query);
+
+int ExitToad();
+
+int args_opt(int argc, char *argv[]);
+
+int checkDataDir();
+void ShowToadbInfo();
 #endif

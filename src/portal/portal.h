@@ -27,7 +27,10 @@ typedef struct ScanHeaderRowInfo
     int colMaxSize;    
 }ScanHeaderRowInfo, *PScanHeaderRowInfo;
 
-PPortal CreatePortal(PSelectStmt stmt);
+
+PPortal CreatePortal();
+int InitSelectPortal(PSelectStmt stmt, PPortal portal);
+
 int SendToPortal(PPortal portal);
 int EndPort(PPortal portal);
 

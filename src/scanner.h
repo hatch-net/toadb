@@ -343,7 +343,7 @@ extern int yylex \
 #undef YY_DECL
 #endif
 
-#line 99 "parser/scanner.l"
+#line 117 "parser/scanner.l"
 
 
 #line 350 "scanner.h"

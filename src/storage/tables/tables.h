@@ -6,76 +6,29 @@
 #ifndef HAT_TABLES_H_H
 #define HAT_TABLES_H_H
 
-#define PAGE_MAX_SIZE (1024)
-#define PAGE_VERSION (0x2B3C)
 
-#define FLEXIBLE_SIZE
-#define NAME_MAX_LEN  64
+#include "tfile.h"
+#include "tablecom.h"
+#include "nsm.h"
+#include "pax.h"
 
-#define PAGE_HEAD_PAGE_NUM 1
-#define PAGE_EXTENSION_MAX_NUM 512
+typedef struct TableList *PTableList;
 
-typedef enum PageType
+typedef enum StorageType
 {
-    PAGE_HEADER = 0x01,
-    PAGE_DATA
-}PageType;
+    ST_NSM  = 0x01,
+    ST_PAX  = 0x02,
+    ST_NUM
+}StorageType;
 
-typedef enum PageOp
-{
-    PAGE_NEW,
-    PAGE_EXIST
-}PageOp;
+/* create table file and initialize first page with metadata. */
+int TableCreate(char *fileName, ForkType forkNum);
 
-/* file manage by pages units.
- * page maxsize 
- * first page: pageheader --- table info -- columninfo ...
- * seconde page: pageheader --- row data ... 
- */
-typedef struct PageHeader
-{
-    int pageVersion;
-    int pageType;
-    int pageNum;
-}PageHeader, *PPageHeader;
+int TableOpen(PTableList tblInfo, ForkType forkNum);
 
-typedef struct PageDataHeader
-{
-    PageHeader header;
-    int dataOffset;     /* offset from this structure. */
-    int dataEndOffset;  /* the same above */
-}PageDataHeader, *PPageDataHeader;
+int TableDrop(PTableList tblInfo);
 
-#define PAGE_DATA_HEADER_SIZE sizeof(PageDataHeader)
-
-typedef struct ColumnDefInfo
-{
-    char colName[NAME_MAX_LEN];
-    int type;
-    int options;
-}ColumnDefInfo, *PColumnDefInfo;
-
-typedef struct TableMetaInfo
-{
-    int tableId;
-    char tableName[NAME_MAX_LEN];
-    int colNum;
-    ColumnDefInfo column[FLEXIBLE_SIZE];
-}TableMetaInfo, *PTableMetaInfo;
-
-typedef struct RowColumnData
-{
-    int size;
-    int attrindex;
-    char data[FLEXIBLE_SIZE];
-}RowColumnData, *PRowColumnData;
-
-typedef struct TableRowData
-{
-    int size;           /* row data size */
-    int num;            /* column num of row data */
-    PRowColumnData columnData[FLEXIBLE_SIZE];
-}TableRowData, *PTableRowData;
-
+PPageHeader TableRead(PsgmrInfo smgrInfo, PPageOffset pageoffset, ForkType forkNum);
+int TableWrite(PsgmrInfo smgrInfo, PPageHeader page, ForkType forkNum);
 
 #endif

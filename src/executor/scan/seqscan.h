@@ -11,18 +11,33 @@
 #include "buffer.h"
 #include "portal.h"
 
+
+typedef struct ScanPageInfo
+{
+    SearchPageInfo groupPageInfo;
+    PSearchPageInfo searchPageList;
+    PPageDataHeader *pageList;
+    int pageListNum;
+}ScanPageInfo, *PScanPageInfo;
+
 /* per table record the scan state before the table end. */
 typedef struct ScanState
 {
     PTableList tblInfo;
-    int pageIndex;      /* page index of table file */
-    int pageOffset;     /* offset of page */
     int columnNum;      /* query column of current table */
     int rowNum;
     PDList rows;
+    
+    /////old below
+    int pageIndex;      /* page index of table file */
+    int pageOffset;     /* offset of page */
     PPageDataHeader page;
+    /////old above
+    
+    ScanPageInfo scanPageInfo;
     PColumnDef columnDefArr;
 }ScanState, *PScanState;
+
 
 
 /*
@@ -42,5 +57,8 @@ int ScanTable(PTableList tbl, PScanState tblScan);
 int ScanOneTblRows(char *tblName, PScan scanState);
 
 PScanState AddScanStateNode(PTableList tblInfo, PScan scan);
+
+/* PAX mode, search group member pages */
+PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan);
 
 #endif
