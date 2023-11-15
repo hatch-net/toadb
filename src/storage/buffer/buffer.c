@@ -6,6 +6,7 @@
 #include "buffer.h"
 #include "exectable.h"
 #include "tfile.h"
+#include "scan.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -292,9 +293,10 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
         attrData = GetDataByIndex(attrIndex, stmt->valuesList);
         if(attrData == NULL)
         {
+            int i = 0;
             log("attr and values is not match. \n");
             /* TODO resource release. */
-            for(int i = 0; i < tblMeta->colNum; i++)
+            for(i = 0; i < tblMeta->colNum; i++)
             {
                 if(rawRows->columnData[i] != NULL)
                     FreeMem(rawRows->columnData[i]);
@@ -306,8 +308,8 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
 
         switch(colDef[index].type)
         {
-            case INT:
-            case INTEGER:
+            case VT_INT:
+            case VT_INTEGER:
             {
                 int *tmp = NULL;
 
@@ -320,7 +322,8 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
                 *tmp = attrData->value.iData;
             }
                 break;
-            case VARCHAR:
+            case VT_VARCHAR:
+            case VT_STRING:
             {
                 int len = strlen(attrData->value.pData)+1;
 
@@ -332,14 +335,28 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
                 memcpy(rawRows->columnData[index]->data, attrData->value.pData, len);
             }
                 break;
-            case CHAR:
+            case VT_CHAR:
                 size += sizeof(char);
                 rawRows->columnData[index] = (PRowColumnData)AllocMem(size);
                 rawRows->columnData[index]->size = size;
                 rawRows->columnData[index]->attrindex = index;
                 memcpy(rawRows->columnData[index]->data, attrData->value.pData, sizeof(char));
                 break;
-            case BOOL:
+            case VT_DOUBLE:
+            case VT_FLOAT:
+            {
+                float *tmp = NULL;
+
+                size += sizeof(float);
+                rawRows->columnData[index] = (PRowColumnData)AllocMem(size);
+                rawRows->columnData[index]->size = size;
+                rawRows->columnData[index]->attrindex = index;
+
+                tmp = (float *)(rawRows->columnData[index]->data);
+                *tmp = attrData->value.fData;
+            }
+                break;
+            case VT_BOOL:
                 size += sizeof(char);
                 rawRows->columnData[index] = (PRowColumnData)AllocMem(size);
                 rawRows->columnData[index]->size = size;
@@ -357,6 +374,7 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
 
     return rawRows;
 }
+
 
 /*
  * 从磁盘page中解析一行数据
@@ -826,6 +844,7 @@ PGroupItemData GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo)
     }
     else 
     {
+        /* get next group item */
         gItem = (PGroupItem)GET_ITEM(searchInfo->item_offset, page);
         gItem += 1;
         searchInfo->pageNum = searchInfo->page->header.pageNum;
@@ -833,6 +852,7 @@ PGroupItemData GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo)
 
     while (page != NULL)
     {
+        /* group item postion is start when switch page. */
         if(NULL == gItem)
             gItem = (PGroupItem)page->item;
         
@@ -874,6 +894,38 @@ PGroupItemData GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo)
     }
     
     return NULL;
+}
+
+/* 
+ * page No. of column Index is search from specified group.
+ * groupInfo, group data is already readed, group id is specified. 
+ */
+int GetPageNoFromGroupInfo(PSearchPageInfo groupInfo, int AttrIndex)
+{
+    PPageDataHeader page = NULL;
+    PGroupItem gItem = NULL;
+    PMemberData gMemData = NULL;
+
+    int pageno = -1;
+
+    page = groupInfo->page;
+    if(NULL == page)
+    {
+        return -1;      
+    }
+    
+    gItem = (PGroupItem)GET_ITEM(groupInfo->item_offset, page);
+    if(ITEM_END_CHECK(gItem, page) || !GetItemValid(gItem->len))
+    {
+        return -1;
+    }
+
+    gMemData =  (PMemberData)((char*)page + gItem->offset);
+
+    /* default is first member */
+    pageno = gMemData[AttrIndex].member[0].pageno;
+
+    return pageno;
 }
 
 /* 
@@ -1035,6 +1087,9 @@ PPageDataHeader* GetGroupMemberPages(PTableList tblInfo, PGroupItemData item, in
     pageIndex = memberData->member[0].pageno; /* default one member */
     offset = sizeof(MemberData) + memberData->memNum * sizeof(PageOffset);
 
+    /* 
+     * NOTE: every memberData has one member page default.
+     */
     for(; pageIndex != INVALID_PAGE_NUM; )
     {
         page = GetPageByIndex(tblInfo, pageIndex, MAIN_FORK);
@@ -1045,7 +1100,7 @@ PPageDataHeader* GetGroupMemberPages(PTableList tblInfo, PGroupItemData item, in
 
         pagelist[subPageNum] = page;
 
-        /* next page as column link */
+        /* all column finish */
         if(++subPageNum >= *pageNum)
         {
             break;
@@ -1063,6 +1118,82 @@ PPageDataHeader* GetGroupMemberPages(PTableList tblInfo, PGroupItemData item, in
 
         log("group page invalid. groupmember[%d], pagefind[%d-%d]\n", memberData->memNum, subPageNum, pageIndex);
     }
+
+    return pagelist;
+}
+
+PPageDataHeader* GetGroupMemberPagesOpt(PTableList tblInfo, PScanPageInfo scanPageInfo)
+{
+    PPageDataHeader *pagelist = NULL;
+    PGroupItemData groupItem = NULL;
+
+    PPageDataHeader page = NULL;
+    PMemberData memberData = NULL;
+
+    PSearchPageInfo groupSearchInfo = &(scanPageInfo->groupPageInfo);
+    int *colIndex = scanPageInfo->colindexList;
+
+    int pageIndex = 0;
+    int subPageNum = 0;
+    int offset = 0;
+    int colPageIndex = 0;
+
+    groupItem = GetGroupInfo(tblInfo, groupSearchInfo);
+    if (NULL == groupItem)
+        goto END;
+
+    /* calculator memberdata offset */
+    memberData = groupItem->memberData;
+    if(NULL == memberData)
+    {
+        goto END;
+    }
+            
+    /* 
+     * we will search all subpage of this column. 
+     * every memberData may be serval pages. 
+     */
+    pagelist = (PPageDataHeader *)AllocMem(sizeof(PPageDataHeader) * scanPageInfo->pageListNum);
+    
+    /* sesearch all table file ,from current page. */
+    pageIndex = memberData->member[0].pageno; /* default one member */
+    offset = sizeof(MemberData) + memberData->memNum * sizeof(PageOffset);
+
+    for(; pageIndex != INVALID_PAGE_NUM; )
+    {
+        if(colPageIndex == colIndex[subPageNum])
+        {
+            page = GetPageByIndex(tblInfo, pageIndex, MAIN_FORK);
+            if(NULL == page)
+            {
+                break;
+            }
+
+            pagelist[subPageNum] = page;
+
+            /* next page as column link */
+            if(++subPageNum >= scanPageInfo->pageListNum)
+            {
+                break;
+            }
+        }
+
+        colPageIndex ++;
+        memberData = (PMemberData)((char *)(groupItem->memberData) + offset);
+        pageIndex = memberData->member[0].pageno;
+        offset += sizeof(MemberData) + memberData->memNum * sizeof(PageOffset);
+    }
+
+    if(subPageNum != scanPageInfo->pageListNum)
+    {
+        /* error ocur */
+        pageIndex = ReleasePageList(pagelist, memberData->memNum);
+        pagelist = NULL;
+
+        log("group page invalid. groupmember[%d], pagefind[%d-%d]\n", memberData->memNum, subPageNum, pageIndex);
+    }
+
+END:
 
     return pagelist;
 }
@@ -1144,6 +1275,26 @@ PTableRowData FormColRowsData(PTableRowData insertdata)
     return colRows;
 }
 
+PTableRowData FormColData2RowData(PRowColumnData colRows)
+{
+    PTableRowData rowData = NULL;
+    int rowDataSize = sizeof(TableRowData) + sizeof(PRowColumnData);
+
+    if(NULL == colRows)
+    {
+        log("coldata to rowdata invliad argments\n");
+        return NULL;
+    }
+
+    rowData = (PTableRowData)AllocMem(rowDataSize);
+
+    rowData->columnData[0] = colRows;
+    rowData->size = rowDataSize;
+    rowData->num = 1;
+
+    return rowData;
+}
+
 PTableRowData FormCol2RowData(PTableRowData *colRows, int colNum)
 {
     PTableRowData rowData = NULL;
@@ -1209,7 +1360,9 @@ int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num)
     for(i = 0; i < num; i++, pageno++)
     {
         pmData = (PMemberData)((char*)(groupItemData->memberData) + i * size);
-        pmData->colIndex = i; /* colindex start from 0 */
+        
+        /* colindex start from 0 */
+        pmData->colIndex = i;   
         pmData->memNum = 1;
         pmData->member[0].pageno = pageno;
     }
@@ -1339,4 +1492,82 @@ PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo)
     }
     
     return NULL;
+}
+
+/*
+ * Searching rowData, it is pecified by pageindex and rowIndex.
+ */
+PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int rowIndex)
+{
+    PPageDataHeader page = NULL;
+    PItemData Item = NULL;
+    PTableRowData rowData = NULL;
+
+    if(NULL == tblInfo)
+    {
+        log("invalid parameters \n");
+        return NULL;
+    }
+
+    page = GetPageByIndex(tblInfo, pageIndex, MAIN_FORK);
+    if(NULL == page)
+    {
+        return NULL;        
+    }
+    
+    if(rowIndex > 0)
+    {
+        Item = (PItemData)GET_ITEM(rowIndex, page);
+    }
+
+    if(NULL == Item)
+    {
+        return NULL;        
+    }
+
+    if(!ITEM_END_CHECK(Item, page))
+    {    
+        if(GetItemValid(Item->len))
+        {
+            /* deform row */
+            rowData = DeFormRowData(page, Item->offset);
+            return rowData;
+        }
+    }
+
+    return rowData;
+}
+
+int GetAttrIndex(PTableList tblInfo, char *attrName)
+{
+    int index = -1;     /* normal start from 0 */
+    int col = 0; 
+
+    for(col = 0; col < tblInfo->tableDef->colNum; col++)
+    {
+        if(strcmp(attrName, tblInfo->tableDef->column[col].colName) == 0)
+        {
+            index = col;
+            break;
+        }
+    }
+
+    return index;
+}
+
+PColumnDefInfo GetAttrDef(PTableList tblInfo, char *attrName)
+{
+    PColumnDefInfo colDef = NULL;     
+    int col = 0;        /* normal start from 0 */
+
+    for(col = 0; col < tblInfo->tableDef->colNum; col++)
+    {
+        if(strcmp(attrName, tblInfo->tableDef->column[col].colName) == 0)
+        {
+            colDef = &(tblInfo->tableDef->column[col]);
+            break;
+        }
+    }
+
+    return colDef;
 }

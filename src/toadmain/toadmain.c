@@ -18,8 +18,12 @@
 #include "node.h"
 #include "executor.h"
 #include "buffer.h"
+#include "query.h"
+#include "plan.h"
 
 #define log printf
+
+#define PARSER_TREE_PRINT 1
 
 char *DataDir = "./toadbtest";
 
@@ -68,23 +72,55 @@ int toadbMain(int argc, char *argv[])
             break;
         }
 
-        ToadMainEtry(command);
+        ToadMainEntry(command);
     }
 
     ExitToad();
     return 0;
 }
 
-int ToadMainEtry(char *query)
+int ToadMainEntry(char *query)
 {
     List *parserTree = NULL;
+    List *queryTree = NULL;
+    List *planTree = NULL;
 
     /* 对输入的SQL进行词法和语法解析，生成解析树 */
     parserTree = raw_parser(query);
-    // travelParserTree(parserTree);
+    if(NULL == parserTree)
+    {
+        return -1;
+    }
+#ifdef PARSER_TREE_PRINT
+    /* 打印解析树 */    
+    travelParserTree(parserTree, "parser Tree:");
+#endif
 
-    /* 执行器调用入口，根据解析树进行执行 */
-    ExecutorMain(parserTree);
+    /* 对解析树进行分析和重写 */
+    queryTree = QueryAnalyzeAndRewrite(parserTree);
+    if(NULL == queryTree)
+    {
+        return -1;
+    }
+
+#ifdef PARSER_TREE_PRINT
+    /* 打印查询树 */ 
+    travelParserTree(queryTree, "Query Tree: ");
+#endif
+
+    /* 由查询树生成计划树 */
+    planTree = QueryPlan(queryTree);
+    if(NULL == planTree)
+    {
+        return -1;
+    }
+#ifdef PARSER_TREE_PRINT
+    /* 打印计划树 */ 
+    travelParserTree(planTree, "Plan Tree: ");
+#endif
+
+    /* 执行器调用入口，根据执行计划进行执行 */
+    ExecutorMain(planTree);
 
     /* 释放解析树占用的内存资源 */
     ReleaseParserTreeResource(parserTree);
@@ -110,6 +146,9 @@ int checkDataDir()
     return 0;
 }
 
+/*
+ * command line parser. 
+ */
 int args_opt(int argc, char *argv[])
 {
     int	optindex;

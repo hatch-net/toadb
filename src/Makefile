@@ -43,7 +43,9 @@ builddir = $(topdir)/build
 
 ##########################################
 ##########################################
+# DEBUGDEF = -DPARSER_DEBUG_LOG 
 DEFINES += -DSTORAGE_FORMAT_PAX -DMEM_DEBUG
+DEFINES += ${DEBUGDEF}
 # LDFLAGS += -lpthread
 DEBUG_FLAGS = -g
 ##########################################		

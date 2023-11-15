@@ -9,6 +9,7 @@
 #include "buffer.h"
 #include "list.h"
 #include "portal.h"
+#include "executor.h"
 
 #define MAX_ROW_DATA 1024
 
@@ -23,10 +24,6 @@ typedef struct ColumnSelectList
 
 
 
-#define GetOffsetSize(member, type) (unsigned long)(((type *)(0))->member)
-#define GetScanState(ptbl) ((PScanState)((unsigned long)ptbl - GetOffsetSize(tblInfo, ScanState)))
-
-
 
 int ExecCreateTable(PCreateStmt stmt, PPortal portal);
 
@@ -38,5 +35,10 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal);
 
 int OpenTableFile(char *filename, int mode);
 
+
+
+PTableRowData ExecMergeRowData(PExecState eState);
+
+int ExecRowDataCompare(PExecState eState);
 
 #endif

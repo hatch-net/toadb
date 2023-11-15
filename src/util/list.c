@@ -12,9 +12,6 @@ int AddCellToListTail(PDList *head, void *ptr)
 {
     PDLCell cell = NULL;
 
-    if(head == NULL)
-        return -1;
-
     cell = (PDLCell)AllocMem(sizeof(DLCell));
     cell->value = ptr;
     
@@ -46,6 +43,40 @@ int AddDListTail(PDList *list, PDList cell)
     return 0;
 }
 
+PDList PopDListHeadNode(PDList *list)
+{
+    PDList node = NULL;
+    PDList head = NULL;
+
+    if(NULL == list || NULL == *list) 
+    { 
+        return NULL;
+    }
+
+    head = *list;
+    node = head;
+    
+    head = head->next;
+    if(head == node)
+    {
+        /* only one */
+        head = NULL;
+    }
+    else
+    {
+        head->prev = node->prev;
+        node->prev->next = head;
+    }
+
+    /* new head */
+    *list = head;
+
+    /* pop node */
+    node->next = node->prev = NULL;
+
+    return node;
+}
+
 int DelDListNode(PDList *list, PDList cell) 
 {
     PDList node = (PDList)(cell);
@@ -59,4 +90,10 @@ int DelDListNode(PDList *list, PDList cell)
     node->prev->next = node->next;
     
     return 0;
+}
+
+void EreaseDListNode(PDList node)
+{
+    if(NULL != node)
+        FreeMem(node);
 }

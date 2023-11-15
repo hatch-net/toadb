@@ -7,7 +7,7 @@
 #define HAT_TABLE_COM_H_H
 
 #include "tfile.h"
-
+#include "dataTypes.h"
 
 #define NAME_MAX_LEN  64
 
@@ -18,7 +18,7 @@
 typedef struct ColumnDefInfo
 {
     char colName[NAME_MAX_LEN];
-    int type;
+    valueType type;
     int options;
 }ColumnDefInfo, *PColumnDefInfo;
 
@@ -27,7 +27,7 @@ typedef struct TableMetaInfo
     int tableId;
     int tableType;
     char tableName[NAME_MAX_LEN];
-    int colNum;
+    int colNum;                             /* attribute index, start from 0 */
     ColumnDefInfo column[FLEXIBLE_SIZE];
 }TableMetaInfo, *PTableMetaInfo;
 
@@ -48,6 +48,7 @@ typedef struct TableRowData
 }TableRowData, *PTableRowData;
 
 #define MIN_ROW_SIZE (sizeof(TableRowData)+sizeof(RowColumnData))
+
 
 
 #pragma pop(pack(1))
