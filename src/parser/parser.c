@@ -10,12 +10,14 @@
 #include "parser.h"
 #include "scanner.h"
 #include "grammar.h"
+#include "buffer.h"
 
+#define log printf
 
 /* scanner_init declare is needed by raw_parser */
 extern void* scanner_init(char *sqlStr, PSCANNER_DATA yyext);
 
-#define log printf
+
 List* raw_parser(char *sqlstr)
 {
     PSCANNER_DATA parserinfo = NULL;
@@ -24,7 +26,7 @@ List* raw_parser(char *sqlstr)
     int tag = 0;
 
     /* parserinfo memory will be released by caller, include members malloc .*/
-    parserinfo = (PSCANNER_DATA)malloc(sizeof(SCANNER_DATA));
+    parserinfo = (PSCANNER_DATA)AllocMem(sizeof(SCANNER_DATA));
     if(parserinfo == NULL)
     {
         log("Memory is not enough.\n");
@@ -58,5 +60,9 @@ int ReleaseParserTreeResource(List *tree)
 {
     if(NULL == tree)
         return -1;
+    /* release parser tree */
+
+    /* release parser arg */
+    FreeMem(tree);
     return 0;
 }

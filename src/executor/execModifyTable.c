@@ -7,6 +7,8 @@
 #include "tables.h"
 #include "node.h"
 #include "buffer.h"
+#include "execNode.h"
+#include "queryNode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -148,4 +150,75 @@ int pax_ExecInsert(PTableList tblInfo, PTableRowData insertdata)
     return 1;
 }
 
+PTableRowData ExecTableModifyTbl(PExecState eState)
+{
+    PModifyTblState planState = NULL;
+    PModifyTbl plan = NULL;
+    PTableRowData rowData = NULL;
+    PTableList tblInfo = NULL;
+    PRangTblEntry rte = NULL;
+    int opRet = -1, suc_rows = 0;
+
+    /*
+     * eState->subPlanNode and  eState->subPlanStateNode 
+     * is current plan , planState Node;
+     */
+    plan = (PModifyTbl)eState->subPlanNode;
+    planState = (PModifyTblState)eState->subPlanStateNode;
+    rte = (PRangTblEntry)plan->rangTbl;
+    tblInfo = rte->tblInfo;
+
+    /* process left and right node */
+    if(NULL == plan->leftplan)
+    {
+        eState->retCode = ExecRetCode_ERR;
+        return NULL;
+    }
+    
+    /* 
+     * retCode is 0 when success ending, or < 0 is error. 
+     * rowData is NULL, when returning is not set.
+    */
+    for( ;; )
+    {        
+        eState->subPlanNode = (PNode)plan->leftplan;
+        eState->subPlanStateNode = (PNode)planState->left;
+
+        rowData = ExecNodeProc(eState);
+        if(eState->retCode < ExecRetCode_SUC)
+        {
+            /* TODO: rollback transaction */
+            return NULL;
+        }
+
+        /* if success ending, stop circle. */
+        if(NULL == rowData)
+            break;
+
+        /* modify table data */
+        switch(eState->commandType)
+        {
+            case CMD_INSERT:
+                opRet = ExecModifyTable(tblInfo, rowData, T_InsertStmt);
+            break;
+            default:
+                return NULL;
+            break;
+        }
+
+        if(opRet < 0)
+        {
+            eState->retCode = opRet;
+            break;
+        }
+
+        suc_rows ++;
+    }
+
+    if(suc_rows > 0)
+        eState->retCode = suc_rows;
+
+    /* nothing will be return. */
+    return NULL;
+}
 

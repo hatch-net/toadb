@@ -64,8 +64,12 @@ typedef struct GroupItem
 typedef struct MemberData
 {
     int colIndex ;
+
+    /* always is 1. in the future, it will change. */
     int memNum;
-    PageOffset member[FLEXIBLE_SIZE];   /* head is null, while link head  */
+
+    /* TODO: head is null, while link head */
+    PageOffset member[FLEXIBLE_SIZE];   
 }MemberData, *PMemberData;
 
 

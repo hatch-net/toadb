@@ -31,4 +31,6 @@ int TableDrop(PTableList tblInfo);
 PPageHeader TableRead(PsgmrInfo smgrInfo, PPageOffset pageoffset, ForkType forkNum);
 int TableWrite(PsgmrInfo smgrInfo, PPageHeader page, ForkType forkNum);
 
+
+
 #endif

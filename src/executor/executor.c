@@ -9,108 +9,165 @@
 
 #include "executor.h"
 #include "exectable.h"
-
+#include "execUtility.h"
+#include "buffer.h"
+#include "execInitNode.h"
+#include "execNodeProc.h"
 
 // #define log printf
 #define log 
 
-static void ExecutorPlan(PList list)
-{
-    PListCell tmpCell = NULL;
-    PPortal portal = NULL;
-    char *pbuf = NULL;
-    int ret = 0;
-
-    if(NULL == list)
-    {
-        log("NULL tree\n");
-        return;
-    }
-
-    portal = CreatePortal();
-    pbuf = portal->buffer;
-
-    /* list cell node show */
-    for(tmpCell = list->head; tmpCell != NULL; tmpCell = tmpCell->next)
-    {
-        PNode node = (PNode)(tmpCell->value.pValue);
-        switch(node->type)
-        {
-            case T_List:
-                ExecutorPlan((PList)node);
-            break;
-            case T_CreateStmt:
-                {
-                    PCreateStmt createstmt = (PCreateStmt)node;
-                    log("exec T_CreateStmt Node: tablename:%s \n", createstmt->tableName);
-                    ret = ExecCreateTable(createstmt, portal);
-                    snprintf(pbuf, PORT_BUFFER_SIZE, "Create table result %d", ret);
-                }
-            break;
-            case T_DropStmt:
-                {
-                    PDropStmt dropstmt = (PDropStmt)node;
-                    log("exec T_DropStmt Node: drop table :%s \n", dropstmt->tableName);
-                    ret = ExecDropTable(dropstmt, portal);
-                    snprintf(pbuf, PORT_BUFFER_SIZE, "Drop table result %d", ret);
-                }
-            break;
-            case T_InsertStmt:
-                {
-                    PInsertStmt insertstmt = (PInsertStmt)node;
-                    log("T_InsertStmt Node: table :%s \n", insertstmt->tableName);
-                    ret = ExecInsertStmt(insertstmt, portal);
-                    snprintf(pbuf, PORT_BUFFER_SIZE, "Insert into %d rows", ret);
-                }
-            break;
-
-            case T_SelectStmt:
-                {
-                    PSelectStmt stmt = (PSelectStmt)node;
-                    log("T_SelectStmt Node: \n");
-
-                    ret = ExecSelectStmt(stmt, portal);
-                }
-            break;
-            
-            default:
-            break;
-        }
-        SendToPortal(portal);
-    }
-
-    EndPort(portal);
-    return;
-}
-
 void ExecutorMain(PList list)
 {
-    ExecutorPlan(list);
+    PPlan subPlan = NULL;
+    PListCell tmpCell = NULL;
+    PExecState eState = NULL;
+
+    /* excutor subplan one by one */
+    for(tmpCell = list->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        subPlan = (PPlan)GetCellNodeValue(tmpCell);
+
+        ExecutorStart((PNode)subPlan, &eState);
+        
+        ExecutorPlan(eState);
+        
+        ExecutorEnd(eState);
+    }
+
+    return ;
+}
+
+void ExecutorPlan(PExecState eState)
+{
+    PPlan  subPlan = (PPlan)eState->plan;
+    PPortal portal = eState->portal;
+    PPlanState  pState = (PPlanState)eState->planState;
+    char    *pbuf = portal->buffer;
+    int     ret = 0;
+
+    /* Utility process first. */
+    if(subPlan->commandType == CMD_UTILITY)
+    {
+        ExecutorUtility(subPlan, portal);
+        return ;
+    }
+
+    eState->subPlanNode = (PNode)subPlan;
+    eState->subPlanStateNode = (PNode)pState;
+    ExecNodeProc(eState);
+
+    if(eState->retCode >= ExecRetCode_SUC)
+        snprintf(pbuf, PORT_BUFFER_SIZE, "total %d rows sucess", eState->retCode);
+    else
+        snprintf(pbuf, PORT_BUFFER_SIZE, "process falure(%d)", eState->retCode);
+        
+    FlushPortal(portal);
+
     return ;
 }
 
 
-char *ColumnType[] = 
+/* 
+ * pre excutor, we initialize some thing.
+ */
+void ExecutorStart(PNode subPlan, PExecState *eState)
 {
-    "int",
-    "integer",
-    "varchar",
-    "char",
-    "bool",
-    ""
-};
+    PPortal portal = NULL;
 
-
-
-int GetColumnType(char *typename)
-{
-    int index = -1;
-
-    for(int i = 0; i < sizeof(ColumnType)/sizeof(char*); i++)
+    if(NULL == subPlan)
     {
-        if(strcmp(typename, ColumnType[i]) == 0)
-            index = i;
+        log("[ExecutorStart]NULL subPlan\n");
+        return;
     }
 
-    return index;
+    portal = CreatePortal();
+
+    *eState = (PExecState)AllocMem(sizeof(ExecState));
+    (*eState)->portal = portal;
+    (*eState)->plan = subPlan;
+
+    InitExecState(*eState);
 }
+
+/* 
+ * after excutor, we clean some thing.
+ */
+void ExecutorEnd(PExecState eState)
+{
+    if(NULL == eState)
+        return ;
+
+    EndPort(eState->portal);
+
+    EndExecState(eState);
+}
+
+void InitExecState(PExecState eState)
+{
+    PPlan plan = NULL;
+    PNode subPlanStateNode = NULL;
+
+    if(NULL == eState)
+    {
+        return ;
+    }
+
+    plan = (PPlan)eState->plan;
+    eState->commandType = plan->commandType;
+
+    /* 
+     * We will generator excutor state tree, 
+     * that has node types same as  plan tree. 
+     */
+    eState->subPlanNode = (PNode)plan;
+    eState->planState = (PNode)InitExecNode(eState);
+
+    return;
+}
+
+void EndExecState(PExecState eState)
+{
+    /*  release plan State */
+    EndExecPlan(eState);
+
+    FreeMem(eState);
+}
+
+void EndExecPlan(PExecState eState)
+{
+    /* TODO: release */
+    return ;
+}
+
+/*
+ * common function, that call node proc. 
+ */
+PTableRowData ExecNodeProc(PExecState eState)
+{
+    PTableRowData rowData = NULL;
+
+    PPlanStateNode node = (PPlanStateNode)eState->subPlanStateNode;
+
+    if(NULL != node)
+        rowData = node->execProcNode(eState);
+
+    return rowData;
+}
+
+/*
+ * rescan function, return NULL. 
+ * reinitialize scanstate.
+ */
+PTableRowData ExecNodeReScan(PExecState eState)
+{
+    PTableRowData rowData = NULL;
+
+    PPlanStateNode node = (PPlanStateNode)eState->subPlanStateNode;
+
+    if(NULL != node)
+        rowData = node->execReScanNode(eState);
+
+    return rowData;
+}
+

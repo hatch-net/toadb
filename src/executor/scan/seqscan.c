@@ -5,11 +5,15 @@
 
 #include "seqscan.h"
 #include "tfile.h"
+#include "node.h"
+#include "execNode.h"
+#include "queryNode.h"
+
 #include <stdio.h>
 #include <string.h>
 
 #define log printf
-
+#define error printf
 /*
  * there, we read one row from table, 
  * from tblScan marked offset and index of page.
@@ -83,7 +87,9 @@ PTableRowData SeqScanRawRow(PTableList tbl, PScanState tblScan)
     return rawrow;
 }
 
-
+/*
+ * sequence scan all rows in the pages of the group. 
+ */
 PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan)
 {
     PTableRowData *rawcolrow = NULL;
@@ -97,7 +103,7 @@ PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan)
     }
 
     rawcolrow = (PTableRowData *)AllocMem(sizeof(PTableRowData) * tblScan->scanPageInfo.pageListNum);
-    /* second get row data */
+    /* second get row data, column data is in the every group member pages. */
     for(index = 0; index < tblScan->scanPageInfo.pageListNum; index++)
     {
         tblScan->scanPageInfo.searchPageList[index].page = tblScan->scanPageInfo.pageList[index];
@@ -108,6 +114,7 @@ PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan)
         }
     }
 
+    /* error or end ocur */
     if(index != tblScan->scanPageInfo.pageListNum)
     {
         rawrow = NULL;
@@ -140,14 +147,17 @@ ENDONE:
 
 int ScanTable(PTableList tbl, PScanState tblScan)
 {
-    int num =0, grouprownum = 0, groupcount = 0;;
+    int num =0; 
     int pageNum = 0;
     PTableRowData rawRow = NULL;
     PDLCell cell = NULL;
     PGroupItemData groupItem = NULL;
     PSearchPageInfo groupSearchPage;
     PPageDataHeader *pagelist = NULL;
-    
+#ifdef DEBUG_GROUP_SCAN    
+    int grouprownum = 0, groupcount = 0;;
+#endif 
+
     if(NULL == tbl || NULL == tblScan)
     {
         log("ScanTable argments is invalid\n");
@@ -168,8 +178,10 @@ int ScanTable(PTableList tbl, PScanState tblScan)
             groupItem = GetGroupInfo(tbl, groupSearchPage);
             if(NULL == groupItem)
                 break; 
+#ifdef DEBUG_GROUP_SCAN                
             grouprownum = 0;
             groupcount ++;
+#endif            
             /*
             * page list of per group, every attr will has multiple pages.
             */
@@ -201,7 +213,9 @@ int ScanTable(PTableList tbl, PScanState tblScan)
         /* add to tblScan */
         AddCellToListTail(&(tblScan->rows), rawRow);
         num ++;
+#ifdef DEBUG_GROUP_SCAN        
         grouprownum++;
+#endif        
     }while(1); /* until this table end. */
 
     if(NULL != groupItem)
@@ -214,7 +228,7 @@ int ScanTable(PTableList tbl, PScanState tblScan)
 }
 
 /*
- * 每次从每张表中扫描符合条件的row，并且记录当前扫描位置
+ * 每次从一张表中扫描符合条件的row，并且记录当前扫描位置
  * 将扫描到的row记录在scanState中
 */
 int ScanOneTblRows(char *tblName, PScan scan)
@@ -231,39 +245,193 @@ int ScanOneTblRows(char *tblName, PScan scan)
         return -1;
     }
 
-    scanTbl = AddScanStateNode(tblInfo, scan);
+    /* this table scanState added to scan struct of query. */
+    scanTbl = InitScanState(tblInfo, scan);
 
     ret = ScanTable(tblInfo, scanTbl);
 
     return ret;
 }
 
-/* 
- * Initialize scanState ,which is alive untile scan end. 
- * add this table to the scan table list. 
- */
-PScanState AddScanStateNode(PTableList tblInfo, PScan scan)
-{
-    PScanState scanState = NULL;
 
-    if(scan == NULL)
+PTableRowData ExecSeqscanNode(PExecState eState)
+{
+    return SeqscanNext(eState);
+}
+
+
+PTableRowData ExecSeqscanNodeEnd(PExecState eState)
+{
+    return SeqscanEnd(eState);
+}
+
+/*
+*  table group  search item per page, 
+*  if return NULL when the end of file. 
+*/
+PTableRowData SeqscanNext(PExecState eState)
+{
+    int pageNum = 0;
+    PTableRowData rawRow = NULL;
+    PPageDataHeader *pagelist = NULL;
+
+    PSeqScanState seqScanStateNode = (PSeqScanState)eState->subPlanStateNode;
+    PScanState tblScan = seqScanStateNode->scanState;
+
+    if(NULL == tblScan->scanPostionInfo)
+    {
+        error("table scanPostionInfo is NULL\n");
         return NULL;
+    }
 
-    scanState = (PScanState)AllocMem(sizeof(ScanState));
+    pageNum = tblScan->scanPostionInfo->pageListNum;
+    pagelist = tblScan->scanPostionInfo->pageList;
 
-    AddCellToListTail(((PDList*)&(scan->list)), (void *)scanState);
-    memset(scanState, 0x00, sizeof(ScanState));
+    do
+    {
+        /* maybe first time, or next group. */
+        if (NULL == pagelist)
+        {
+            /*
+            * page list of per group, every attr will has multiple pages.
+            */
+            pagelist = GetGroupMemberPagesOpt(tblScan->tblInfo, 
+                                            tblScan->scanPostionInfo);
+            if (NULL == pagelist)
+                break;
 
-    scanState->tblInfo = tblInfo;
-    scanState->columnNum = tblInfo->tableDef->colNum;
+            /* record search page list */
+            tblScan->scanPostionInfo->pageList = pagelist;
+            tblScan->scanPostionInfo->searchPageList = (PSearchPageInfo)AllocMem(pageNum * sizeof(SearchPageInfo));
+        }
 
-    return scanState;
+        /* search row from group pages. and all attributes form one row. */
+        rawRow = SeqScanNextColumnOpt(tblScan->tblInfo, tblScan);
+        if (NULL != rawRow)
+        {
+            /* found one row data */
+            tblScan->rowNum = 1;
+            break;
+        }
+
+        /* this group completed to scanning, then release postion infomation. */
+        ReleasePageList(pagelist, pageNum);
+        pagelist = NULL;
+
+        if(NULL != tblScan->scanPostionInfo->searchPageList)
+        {
+            FreeMem(tblScan->scanPostionInfo->searchPageList);
+            tblScan->scanPageInfo.searchPageList = NULL;
+        }
+    }while(NULL == pagelist);
+
+    return rawRow;
 }
 
-PScanState GetScanState(PTableList tblInfo, PScanState scanStateHead)
+PTableRowData SeqscanEnd(PExecState eState)
 {
-    PScanState scanState = NULL;
-
-    return scanState;
+    return NULL;
 }
 
+
+/*
+ * sequence scan all rows in the pages of the group. 
+ * return rows maybe not all columns, which is specified by caller.
+ */
+PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
+{
+    PTableRowData *rawcolrow = NULL;
+    PTableRowData rawrow = NULL;
+    int index = 0;
+
+    if(NULL == tbl || tblScan == NULL)
+    {
+        log("ScanTableForRawRow argments is invalid\n");
+        return NULL;
+    }
+
+    /* column num which we want is not all the table defined. */
+    rawcolrow = (PTableRowData *)AllocMem(sizeof(PTableRowData) * tblScan->scanPostionInfo->pageListNum);
+
+    /* second get row data, column data is in the every group member pages. */
+    for(index = 0; index < tblScan->scanPostionInfo->pageListNum; index++)
+    {
+        tblScan->scanPostionInfo->searchPageList[index].page = tblScan->scanPostionInfo->pageList[index];
+        rawcolrow[index] = GetRowDataFromPage(tbl, &(tblScan->scanPostionInfo->searchPageList[index]));
+        if(NULL == rawcolrow[index])
+        {
+            break;
+        }
+    }
+
+    /* error or end ocur */
+    if(index != tblScan->scanPostionInfo->pageListNum)
+    {
+        rawrow = NULL;
+        goto END;
+    }
+
+    /* using colrow form one rawrow. */
+    if(tblScan->scanPostionInfo->pageListNum > 1)
+    {
+        rawrow = FormCol2RowData(rawcolrow, tblScan->scanPostionInfo->pageListNum);
+    }
+    else
+    {
+        rawrow = rawcolrow[0];
+        goto ENDONE;
+    }
+END:
+    /* error ocur */
+    for(index = 0; index < tblScan->scanPostionInfo->pageListNum; index++)
+    {
+        if(NULL != rawcolrow[index])
+            FreeMem(rawcolrow[index]);
+    }
+
+ENDONE:
+    FreeMem(rawcolrow);
+    
+    return (PTableRowData)TransFormScanRowData(rawrow, tblScan);
+}
+
+/* 
+ * Initialize search position at the first time.
+ */
+PScanPageInfo InitScanPositionInfo(PExecState eState)
+{
+    PSeqScanState seqScanStateNode = (PSeqScanState)eState->subPlanStateNode;
+    PSeqScan seqScanPlaneNode = (PSeqScan)eState->subPlanNode;
+
+    PScanState tblScan = seqScanStateNode->scanState;
+    PScanPageInfo scanPositionInfo = NULL;
+
+    PList targetList = seqScanPlaneNode->targetList;
+    PListCell tmpCell = NULL;
+    int colIndex = 0;
+
+
+    if((NULL == tblScan->tblInfo) || (NULL == targetList))
+    {
+        error("table metadata is NULL\n");
+        return NULL;
+    }
+
+    scanPositionInfo = (PScanPageInfo)AllocMem(sizeof(ScanPageInfo));
+    
+    /* Column list we want will be initialize. */
+    scanPositionInfo->colindexList = (int *)AllocMem(sizeof(int)*targetList->length);
+    for(tmpCell = targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        PTargetEntry targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
+        PColumnDef colDef = (PColumnDef)targetEntry->colRef;
+
+        scanPositionInfo->colindexList[colIndex] = GetAttrIndex(tblScan->tblInfo, colDef->colName);
+
+        colIndex++;
+    } 
+
+    scanPositionInfo->pageListNum = targetList->length;
+
+    return scanPositionInfo;
+}

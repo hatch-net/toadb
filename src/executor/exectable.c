@@ -22,6 +22,8 @@
 #define log printf
 extern char *DataDir;
 
+
+
 /*
  * executor of table create.
  * list is a tree of parser.
@@ -173,209 +175,6 @@ int ExecInsertStmt(PInsertStmt stmt, PPortal portal)
     return ret;
 }
 
-int fillBack(char *buf, char op, int size)
-{
-    if(size <= 0)
-        return size;
-    memset(buf, op, size);
-    return size;
-}
-
-typedef enum SHOW_PHARE
-{
-    SHOW_PHARE_ROW_SIZE,
-    SHOW_PHARE_SHOW_DATA,
-    SHOW_PHARE_MAX
-}SHOW_PHARE;
-
-int ClientFormRow(PScan scanHead, PSelectStmt stmt)
-{
-    char *pbuf = scanHead->portal->buffer;
-    int bufOffset = 0;
-    int *rowMaxSize = NULL;
-    PScanState scantbl = NULL;
-    PDList node = NULL;
-    PDList rownode = NULL;
-    PTableRowData rawRow = NULL;
-    PColumnDefInfo colDef = NULL;
-
-    PValuesData attrData = NULL;
-    int size = 0;
-    int index = 0;
-    int attrIndex = 0;
-    int first = 1;
-    int showPhare = SHOW_PHARE_ROW_SIZE;
-    int showNum = 0;
-
-    memset(pbuf, 0x00, PORT_BUFFER_SIZE);
-
-    /* rows order by select */
-    for(node = scanHead->list; (first || node != scanHead->list) && node != NULL; node = node->next)
-    {
-        scantbl = (PScanState)(((PDLCell)node)->value);
-        colDef = scantbl->tblInfo->tableDef->column;
-        bufOffset = 0;
-        showPhare = SHOW_PHARE_ROW_SIZE;
-
-        do
-        {
-            first = 1;
-            showNum = 0;
-
-            if(scantbl->rows == NULL )
-            {
-                first = 0;
-                /* no rows to show. */
-                break;
-            }
-
-           /* two show phare , first collect max column size, then show . */
-            if(showPhare)
-            {
-                for(attrIndex = 0; attrIndex < scantbl->tblInfo->tableDef->colNum; attrIndex ++)
-                {
-                    snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%s", colDef[attrIndex].colName);
-                    size = strlen(colDef[attrIndex].colName);
-                    bufOffset += size + 1;
-
-                    /* value len is smaller than title name len. */
-                    rowMaxSize[attrIndex] = rowMaxSize[attrIndex] > size ? rowMaxSize[attrIndex] : size;
-
-                    fillBack(pbuf+bufOffset, '-', rowMaxSize[attrIndex] - size);
-                    bufOffset += rowMaxSize[attrIndex] - size;
-                }
-                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|");
-                SendToPortal(scanHead->portal); 
-                bufOffset = 0;
-            }
-
-            for(rownode = scantbl->rows; (first ||rownode != scantbl->rows) && rownode != NULL; rownode = rownode->next)
-            {
-                first = 0;
-                rawRow = (PTableRowData)(((PDLCell)rownode)->value);
-
-                if(rowMaxSize == NULL)
-                {
-                    rowMaxSize = (int*) AllocMem(rawRow->num * sizeof(int));
-                    memset(rowMaxSize, 0x00, rawRow->num * sizeof(int));
-                }                
-
-                for(attrIndex = 0; attrIndex < rawRow->num; attrIndex ++)
-                {
-                    switch(colDef[attrIndex].type)
-                    {
-                        case INT:
-                        case INTEGER:
-                        {
-                            int *tmp = NULL;
-                            char digit[128];
-                            int size = 0;
-                            if(rawRow->columnData[attrIndex] != NULL)
-                            {
-                                tmp = (int *)(rawRow->columnData[attrIndex]->data);
-                                snprintf(digit, 128, "%d", *tmp);
-                                size = strlen(digit);
-                            }
-
-                            if(showPhare)
-                            {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*d", rowMaxSize[attrIndex], *tmp);  
-                                bufOffset += rowMaxSize[attrIndex] + 1;                              
-                            }
-                            else
-                            {
-                                if(size > rowMaxSize[attrIndex])
-                                    rowMaxSize[attrIndex] = size + 1;
-                            }
-                        }
-                        break;
-                        case VARCHAR:
-                        {
-                            int size = 0;
-                            char *data = NULL;
-                            if (rawRow->columnData[attrIndex] != NULL)
-                            {
-                                data = rawRow->columnData[attrIndex]->data;
-                                size = rawRow->columnData[attrIndex]->size;
-                            }
-
-                            if(showPhare)
-                            {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*s", rowMaxSize[attrIndex], data);
-                                bufOffset += rowMaxSize[attrIndex] + 1; 
-                            }
-                            else
-                            {
-                                if(size > rowMaxSize[attrIndex])
-                                    rowMaxSize[attrIndex] = size;
-                                
-                            }
-                        }
-                        break;
-                        case CHAR:
-                        {
-                            char data = '\0';
-                            if (rawRow->columnData[attrIndex] != NULL)
-                            {
-                                data = rawRow->columnData[attrIndex]->data[0];
-                            }
-
-                            if(showPhare)
-                            {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*c", rowMaxSize[attrIndex],data);
-                                // fillBack(pbuf+bufOffset+2, ' ', rowMaxSize[attrIndex] - 1);
-                                bufOffset += rowMaxSize[attrIndex] + 1; 
-                            }
-                            else
-                                rowMaxSize[attrIndex] = sizeof(char);
-                        }
-                        break;
-                        case BOOL:
-                        {
-                            char data = '\0';
-                            if (rawRow->columnData[attrIndex] != NULL)
-                            {
-                                data = rawRow->columnData[attrIndex]->data[0];
-                            }
-
-                            if(showPhare)
-                            {
-                                snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|%*c", rowMaxSize[attrIndex],data);
-                                // fillBack(pbuf+bufOffset+2, ' ', rowMaxSize[attrIndex] - 1);
-                                bufOffset += rowMaxSize[attrIndex] + 1; 
-                            }
-                            else
-                                rowMaxSize[attrIndex] = sizeof(char);
-                        }
-                        break;
-                        default:
-                        break;
-                    }                    
-                }
-                if(showPhare)
-                {
-                    snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|");
-                    SendToPortal(scanHead->portal);
-                    bufOffset = 0;
-                    showNum ++;
-                }
-            }
-
-            showPhare++;
-        }while(showPhare < SHOW_PHARE_MAX);
-
-        snprintf(pbuf, PORT_BUFFER_SIZE , "total %d rows", showNum);
-        SendToPortal(scanHead->portal);
-
-        if(NULL != rowMaxSize)
-        {
-            FreeMem(rowMaxSize);
-            rowMaxSize = NULL;
-        }
-    }
- 
-    return 0;
-}
 
 /*
  * select 执行入口
@@ -383,7 +182,7 @@ int ClientFormRow(PScan scanHead, PSelectStmt stmt)
 int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
 {
     PListCell tmpCell = NULL;
-    Scan scanState;
+    Scan scan;
     int num = 0;
 
     if(NULL == stmt)
@@ -392,28 +191,45 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
         return -1;
     }
 
-    if(stmt->tblList == NULL)
+    if(stmt->relrange == NULL)
     {
         log("table reference is null. \n");
         return 0;
     }
 
-    memset(&scanState, 0x00, sizeof(Scan));
+    memset(&scan, 0x00, sizeof(Scan));
 
     /* create portal, which will store all rows. */
-    InitSelectPortal(stmt, portal);
-    scanState.portal = portal;
+    if(InitSelectPortal(stmt->targetlist, portal) < 0)
+    {
+        log("select excutor failure.\n");
+        return -1;
+    }
+    scan.portal = portal;
 
     /* we will scan all tables, from table head to table tail. */
-    for(tmpCell = stmt->tblList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    for(tmpCell = stmt->relrange->head; tmpCell != NULL; tmpCell = tmpCell->next)
     {
         PTableRefName node = (PTableRefName)(tmpCell->value.pValue);
-        num = ScanOneTblRows(node->tblRefName, &scanState);
+        num = ScanOneTblRows(node->tblRefName, &scan);
         portal->num = num;
     }
 
     /* form temp row data , which will be shown on client. */
-    ClientFormRow(&scanState, stmt);
+    ClientFormRow(&scan, stmt);
 
+    return 0;
+}
+
+
+
+PTableRowData ExecMergeRowData(PExecState eState)
+{
+   
+    return NULL;
+}
+
+int ExecRowDataCompare(PExecState eState)
+{
     return 0;
 }

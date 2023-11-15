@@ -58,9 +58,22 @@ extern int yydebug;
     WHERE = 268,
     AND = 269,
     OR = 270,
-    IDENT = 271,
-    STRING = 272,
-    DIGEST = 273
+    NOT = 271,
+    ORDER = 272,
+    GROUP = 273,
+    LIMIT = 274,
+    OFFSET = 275,
+    AS = 276,
+    BY = 277,
+    IDENT = 278,
+    STRING = 279,
+    INTNUMBER = 280,
+    FLOATNUMBER = 281,
+    LESS_EQ = 282,
+    GREATER_EQ = 283,
+    NOT_EQ = 284,
+    Op = 285,
+    UMINUS = 286
   };
 #endif
 
@@ -74,10 +87,11 @@ union YYSTYPE
     char *sval;
     int  ival;
     char op;
+    float fval;
     PList list;
     PNode node;
 
-#line 81 "./parser/grammar.h" /* yacc.c:1909  */
+#line 95 "./parser/grammar.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;
