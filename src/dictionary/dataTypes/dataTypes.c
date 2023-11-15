@@ -23,9 +23,8 @@ char *ColumnType[VT_MAX] =
 int GetColumnType(char *typename)
 {
     int index = -1;
-    int i = 0;
 
-    for(i = 0; i < VT_MAX; i++)
+    for(int i = 0; i < VT_MAX; i++)
     {
         if(strcmp(typename, ColumnType[i]) == 0)
             index = i;

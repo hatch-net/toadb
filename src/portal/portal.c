@@ -52,7 +52,7 @@ int InitSelectPortal(PList targetList, PPortal portal)
     PTableList tblInfo = NULL;
     int columnNum = 0;
 
-    if(NULL != portal->targetList)
+    if(NULL == portal->targetList)
         portal->targetList = targetList;
 
 #if 0
@@ -138,6 +138,8 @@ int SendToPort(PPlanStateNode rowDataInfo, PTableRowData rowData)
         return -1;
     }
 
+    /* reassign rows pointer, maybe rows address is change. */
+    portal->rows = rows;
     portal->num += 1;
 
     return 0;
@@ -427,8 +429,7 @@ int CalculatorColumnWidth(PPortal portal, int *rowMaxSize)
     int index = 0;
     int rowWidth = 0;
     
-
-    if((NULL == rowMaxSize) || (NULL != portal) || (NULL != portal->targetList))
+    if((NULL == rowMaxSize) || (NULL == portal) || (NULL == portal->targetList))
         return -1;
 
     /* collect column data type */
@@ -444,8 +445,11 @@ int CalculatorColumnWidth(PPortal portal, int *rowMaxSize)
     }
 
     /* collect max size per column data */
-    for(rownode = portal->rows; rownode != portal->rows && rownode != NULL; rownode = rownode->next)
-    {
+    rownode = portal->rows;
+    do {
+        if(NULL == rownode)
+            break;
+        
         rawRow = (PTableRowData)(((PDLCell)rownode)->value);
 
         for(index = 0; index < rawRow->num; index ++)
@@ -454,7 +458,9 @@ int CalculatorColumnWidth(PPortal portal, int *rowMaxSize)
             if(rowMaxSize[index] < rowWidth)
                 rowMaxSize[index] = rowWidth;
         }
-    }
+
+        rownode = rownode->next;
+    }while(rownode != portal->rows);
 
     if(NULL != portal->targetValTypeArr)
         FreeMem(portal->targetValTypeArr);
@@ -465,19 +471,31 @@ int CalculatorColumnWidth(PPortal portal, int *rowMaxSize)
 
 int FinishSend(PPortal portal)
 {
-    if(NULL == portal)
+    int ret = 0;
+
+    if((NULL == portal) ||(NULL == portal->targetList))
         return -1;
 
     if(NULL != portal->attrWidth)
         FreeMem(portal->attrWidth);
 
-    portal->attrWidth = (int *)AllocMem(sizeof(int) * portal->num);
+    portal->attrWidth = (int *)AllocMem(sizeof(int) * portal->targetList->length);
 
     /* first calculator column size */
-    CalculatorColumnWidth(portal, portal->attrWidth);
+    ret = CalculatorColumnWidth(portal, portal->attrWidth);
+    if(ret < 0)
+    {
+        log("[FinishSend] calculator column width falure.ret[%d]\n", ret);
+        return ret;
+    }
 
     /* format head line */
-    GeneralVirtualTableHead(portal);
+    ret = GeneralVirtualTableHead(portal);
+    if(ret < 0)
+    {
+        log("[FinishSend] generate virtual table headline falure.ret[%d]\n", ret);
+        return ret;
+    }
 
     /* format rows data */
     ClientRowDataShow(portal);
@@ -500,6 +518,9 @@ int GeneralVirtualTableHead(PPortal portal)
     int size = 0;
     int bufOffset = 0;
 
+    if((NULL == portal) || (NULL == portal->targetList))
+        return -1;
+        
     for(tmpCell = portal->targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
     {
         targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
@@ -544,19 +565,26 @@ int ClientRowDataShow(PPortal portal)
     int bufOffset = 0;
     
     /* collect max size per column data */
-    for(rownode = portal->rows; rownode != portal->rows && rownode != NULL; rownode = rownode->next)
+    rownode = portal->rows;
+    do 
     {
+        if(rownode == NULL)
+            break;
+        
         rawRow = (PTableRowData)(((PDLCell)rownode)->value);
+        bufOffset = 0;
 
         for(index = 0; index < rawRow->num; index ++)
         {
-            GetValueInfo(portal->targetValTypeArr[index], rawRow->columnData[index], pbuf, portal->attrWidth[index]);
+            GetValueInfo(portal->targetValTypeArr[index], rawRow->columnData[index], pbuf+bufOffset, portal->attrWidth[index]);
             bufOffset += portal->attrWidth[index] + 1;
         }
 
         snprintf(pbuf + bufOffset, PORT_BUFFER_SIZE - bufOffset, "|");
         FlushPortal(portal);
-    }
+
+        rownode = rownode->next;
+    }while(rownode != portal->rows);
    
     return 0;
 }

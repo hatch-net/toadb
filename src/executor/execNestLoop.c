@@ -94,12 +94,13 @@ PTableRowData ExecBoolExpreNode(PExecState eState)
 
     for(; ;)
     {
+        rowDataLeft = (PTableRowData)planState->outResultRow;
         if((HAT_YES == planState->outerIsEnd) && (HAT_YES == planState->innerIsEnd))
         {
             /* node task completed. */
             return NULL;
         }
-        else if((HAT_NO != planState->outerIsEnd) && (HAT_YES == planState->innerIsEnd))
+        else if((HAT_NO == planState->outerIsEnd) && (HAT_YES == planState->innerIsEnd))
         {
             /* inner search end, change outer to rescan. */
             if(AND_EXPR == plan->mergeType)
@@ -115,13 +116,15 @@ PTableRowData ExecBoolExpreNode(PExecState eState)
 
         if(HAT_YES == planState->outerNeedNew)
         {
+            rowDataLeft = NULL;
             if(HAT_NO == planState->outerIsEnd)
             {
                 eState->subPlanNode = (PNode)plan->leftplan;
                 eState->subPlanStateNode = (PNode)planState->left;
-                rowDataLeft = ExecNodeProc(eState);
+                rowDataLeft = ExecNodeProc(eState);                
             }
             
+            planState->outResultRow = (PNode)rowDataLeft;
             if(NULL == rowDataLeft)
             {
                 planState->outerIsEnd = HAT_YES;
@@ -176,11 +179,9 @@ PTableRowData ExecBoolExpreNode(PExecState eState)
     }
 
     /* merge rows, matching the targetlist. */
-    planState->scanRowDataLeft = rowDataLeft;
-    planState->scanRowDataLeft = rowDataRight;
+    eState->scanRowDataLeft = rowDataLeft;
+    eState->scanRowDataRight = rowDataRight;
     
-    eState->subPlanNode = (PNode)plan;
-    eState->subPlanStateNode = (PNode)planState;
     rowData = ExecMergeRowData(eState);    
 
     return rowData;
@@ -193,6 +194,8 @@ PTableRowData ExecJoinExpreNode(PExecState eState)
      
     PTableRowData rowDataLeft = NULL, rowDataRight = NULL;
     PTableRowData rowData = NULL;
+
+    int found = 0;
 
     /*
      * eState->subPlanNode and  eState->subPlanStateNode 
@@ -216,6 +219,7 @@ PTableRowData ExecJoinExpreNode(PExecState eState)
             return NULL;
         }
 
+        rowDataLeft = (PTableRowData)planState->outResultRow;
         if(HAT_YES == planState->outerNeedNew)
         {
             eState->subPlanNode = (PNode)plan->leftplan;
@@ -231,6 +235,7 @@ PTableRowData ExecJoinExpreNode(PExecState eState)
                 return NULL;
             }
 
+            planState->outResultRow = (PNode)rowDataLeft;
             planState->outerNeedNew = HAT_NO;      
             planState->innerNeedNew = HAT_YES;
 
@@ -258,19 +263,20 @@ PTableRowData ExecJoinExpreNode(PExecState eState)
             }
                                 
             /* excute express */
-            planState->scanRowDataLeft = rowDataLeft;
-            planState->scanRowDataLeft = rowDataRight;
+            eState->scanRowDataLeft = rowDataLeft;
+            eState->scanRowDataRight = rowDataRight;
     
             eState->subPlanNode = (PNode)plan;
             eState->subPlanStateNode = (PNode)planState;
             if(ExecRowDataCompare(eState) == 0)
             {
                 /* founded */
+                found = 1;
                 break;
             }
         }
 
-        if(NULL != rowDataRight)
+        if(found)
         {
             /* founded */
             break;
@@ -278,6 +284,8 @@ PTableRowData ExecJoinExpreNode(PExecState eState)
     }
 
     /* merge rows, matching the targetlist. */
+    eState->scanRowDataLeft = rowDataLeft;
+    eState->scanRowDataRight = rowDataRight;
     rowData = ExecMergeRowData(eState);    
 
     return rowData;

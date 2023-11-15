@@ -16,7 +16,8 @@ PList QueryPlan(PList queryTree)
     PList Plan = NULL;
     PNode subPlan = NULL;
     PListCell tmpCell = NULL;
-
+    PMemContextNode oldContext = NULL;
+    
     /* add scan node and target node */
     if(NULL == queryTree)
     {
@@ -24,8 +25,10 @@ PList QueryPlan(PList queryTree)
         return NULL;
     }
 
+    oldContext = MemMangerNewContext("planTree");
+    
     /* traverse all subParserTree, generator query tree. */
-    for(tmpCell = queryTree->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    for(tmpCell = queryTree->head; tmpCell != NULL; tmpCell = tmpCell->next) 
     {
         PQuery node = (PQuery)(tmpCell->value.pValue);
         
@@ -35,6 +38,7 @@ PList QueryPlan(PList queryTree)
             Plan = AppendNode(Plan, (PNode)subPlan);
     }
 
+    MemMangerSwitchContext(oldContext);
     return Plan;
 }
 
@@ -185,7 +189,7 @@ PNode ProcessQual(PPlanProcessor planProcess)
     if(NULL == joinTreeList)
         return NULL;
     
-        /* search qual list */
+    /* search qual list */
     for(tmpCell = joinTreeList->head; tmpCell != NULL; tmpCell = tmpCell->next)
     {
         PNode valueNode = (PNode)GetCellNodeValue(tmpCell);
@@ -267,15 +271,20 @@ PNode ProcessScanNode(PPlanProcessor planProcess)
     PSeqScan seqScanNode = NULL;
     PExprEntry exprNode = (PExprEntry)planProcess->currentNode;
     PQuery query = planProcess->query;
+    PRangTblEntry rte = NULL;
 
     if(NULL == exprNode)
         return NULL;
 
     seqScanNode = NewNode(SeqScan);
 
-    seqScanNode->rangTbl = GetCellValueByIndex(query->rtable, exprNode->rindex);
+    rte = (PRangTblEntry)GetCellValueByIndex(query->rtable, exprNode->rindex);
+    if(NULL != rte)
+        rte->isScaned = 1;
+
     seqScanNode->expr = (PNode)exprNode;
     seqScanNode->targetList = exprNode->targetList;
+    seqScanNode->rangTbl = (PNode)rte;
 
     return (PNode)seqScanNode;
 }
@@ -302,3 +311,4 @@ PNode ProcessJoinNode(PPlanProcessor planProcess)
 
     return (PNode)nlNode;
 }
+

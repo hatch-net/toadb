@@ -15,6 +15,8 @@
 int g_queryId = 0;
 
 static int GetQueryId();
+static PNode CommonQueryTransform(PQueryState queryState);
+
 
 /* 
  * analyze and rewrite, transform parser tree to query tree.
@@ -24,6 +26,9 @@ PList QueryAnalyzeAndRewrite(PList parserTree)
     PList Query = NULL;
     PQuery subQuery = NULL;
     PListCell tmpCell = NULL;
+    PMemContextNode oldContext = NULL;
+
+    oldContext = MemMangerNewContext("queryTree");
 
     if(NULL == parserTree)
     {
@@ -41,6 +46,8 @@ PList QueryAnalyzeAndRewrite(PList parserTree)
         if(NULL != subQuery)
             Query = AppendNode(Query, (PNode)subQuery);
     }
+
+    MemMangerSwitchContext(oldContext);
 
     return Query;
 }
@@ -108,8 +115,16 @@ PQuery transformSelectStmt(PSelectStmt selectStmt)
     queryState->parentTargetList = ProcessCheckTargetList(selectStmt->targetlist, queryState);
     selectQuery->targetList = queryState->parentTargetList;    
 
+    /* children node generator. */
+    queryState->querylevel = 2;
+
     /* generator jointree, which has target list per node. */
-    selectQuery->joinTree = QueryJoinTransform(selectStmt->whereList, queryState);
+    if(NULL != selectStmt->whereList)
+        queryState->joinTree = QueryJoinTransform(selectStmt->whereList, queryState);
+
+    /* select .. from ..; or not ref rangtable. */
+    selectQuery->joinTree = (PList)CommonQueryTransform(queryState);
+
 
     if(NULL != queryState)
     {
@@ -202,7 +217,7 @@ PNode MergerNodeProcess(PNode node, PQueryState queryState)
     mergerNode->righttree = QualNodeProcess(GetSecondCellNode(boolExprNode->args), queryState);
     mergerNode->isJoin = queryState->isJoin;
 
-    /* targetlist is same as parent. */
+    /* targetlist is subnode merger. */
     mergerNode->targetList = parentTagetList;
 
     /* restore parent targetlist */
@@ -239,50 +254,124 @@ PNode QualNodeProcess(PNode node, PQueryState queryState)
 PNode ExprNodeProcess(PNode node, PQueryState queryState)
 {
     PA_Expr exprNode = (PA_Expr)node;
-    PJoinEntry joinNode = NULL;
-    PExprEntry commExprNode = NULL;
+    PNode subNode = NULL;
     PNode targetNode = NULL;
+    PList parenttargetList = queryState->parentTargetList;
+    PExprEntry commExprNode = NULL;
+    int lrindex = -1, rrindex = -1;
 
+    queryState->parentTargetList = NULL;
+    
     /* judge join expr or common */
     if((NULL != exprNode->lexpr) && (T_ColumnRef == ((PNode)(exprNode->lexpr))->type)
         && (NULL != exprNode->rexpr) && (T_ColumnRef == ((PNode)(exprNode->rexpr))->type))
     {
-        /* join qualication */
-        joinNode = NewNode(JoinEntry);
-
-        joinNode->isJoin = 1;
-        queryState->isJoin = joinNode->isJoin;
-
-        joinNode->joinOp = exprNode->exprOpType;
-        joinNode->lefttree = exprNode->lexpr;
-        joinNode->righttree = exprNode->rexpr;                  
-
         /* two columns, maybe two or one tables */
         targetNode = TargetNodeProcess(exprNode->lexpr, queryState);
         if(NULL != targetNode)
-            joinNode->targetList = AppendNode(joinNode->targetList, targetNode);
+            queryState->parentTargetList = AppendNode(queryState->parentTargetList, targetNode);
+        lrindex = queryState->rindex;
 
         targetNode = TargetNodeProcess(exprNode->rexpr, queryState);
         if(NULL != targetNode)
-            joinNode->targetList = AppendNode(joinNode->targetList, targetNode);
+            queryState->parentTargetList = AppendNode(queryState->parentTargetList, targetNode);
+        rrindex = queryState->rindex;
+        
+        if(lrindex != rrindex)
+        {
+            subNode = JoinQualNodeProcess(node, queryState);
+        }
+        else
+        {
+            /* common expr */
+            commExprNode = NewNode(ExprEntry);
+            commExprNode->op = exprNode->exprOpType;
+            commExprNode->rindex = lrindex;
+            commExprNode->lefttree = exprNode->lexpr;
+            commExprNode->righttree = exprNode->rexpr;
+            commExprNode->targetList = queryState->parentTargetList;
 
-        joinNode->rindex = -1;
-
-        return (PNode)joinNode;
+            subNode = (PNode)commExprNode;
+        }
     }
+    else
+    {
+        /* common expr */
+        subNode = CommExprNodeProcess(node, queryState);
+    }
+
+    /* reset original */
+    queryState->parentTargetList = parenttargetList;
+
+    return subNode;
+}
+
+PNode JoinQualNodeProcess(PNode node, PQueryState queryState)
+{
+    PA_Expr exprNode = (PA_Expr)node;
+    PJoinEntry joinNode = NULL;
+    PNode subExpr = NULL;
+
+    /* join qualication */
+    joinNode = NewNode(JoinEntry);
+    joinNode->joinOp = exprNode->exprOpType;         
+    joinNode->rindex = -1;
+    joinNode->isJoin = 1;
+    joinNode->targetList = queryState->parentTargetList;
+
+    /* left and right subnode generator */
+    subExpr = exprNode->rexpr;
+    exprNode->rexpr = NULL;
+    joinNode->lefttree = CommExprNodeProcess(node, queryState);
+
+    exprNode->rexpr = subExpr;
+    subExpr = exprNode->lexpr;
+    exprNode->lexpr = exprNode->rexpr;
+    exprNode->rexpr = NULL;
+    joinNode->righttree = CommExprNodeProcess(node, queryState);  
+
+    /* reset original */
+    exprNode->rexpr = exprNode->lexpr;
+    exprNode->lexpr = subExpr;
+    queryState->isJoin = joinNode->isJoin;
+
+    return (PNode)joinNode;
+}
+
+PNode CommExprNodeProcess(PNode node, PQueryState queryState)
+{
+    PA_Expr exprNode = (PA_Expr)node;
+    PExprEntry commExprNode = NULL;
+    PNode targetNode = NULL;
 
     /* common expr */
     commExprNode = NewNode(ExprEntry);
     commExprNode->op = exprNode->exprOpType;
 
-    commExprNode->lefttree = exprNode->lexpr;
-    commExprNode->righttree = exprNode->rexpr;
-
+    queryState->rindex = -1;
     /* target list */
-    targetNode = TargetNodeProcess(exprNode->lexpr, queryState);
+    if((NULL != exprNode->lexpr) && (T_ColumnRef == ((PNode)(exprNode->lexpr))->type))
+    {
+        commExprNode->lefttree = exprNode->lexpr;
+        commExprNode->righttree = exprNode->rexpr;
+        targetNode = TargetNodeProcess(exprNode->lexpr, queryState);
+    }
+    else if((NULL != exprNode->rexpr) && (T_ColumnRef == ((PNode)(exprNode->rexpr))->type))
+    {
+        commExprNode->lefttree = exprNode->rexpr;
+        commExprNode->righttree = exprNode->lexpr;
+        targetNode = TargetNodeProcess(exprNode->rexpr, queryState);
+    }
+    else
+    {
+        /* const expr or NULL expr */
+        log("not support expr!\n");
+    }
+
     if(NULL != targetNode)
         commExprNode->targetList = AppendNode(commExprNode->targetList, targetNode);
 
+    /* TargetNodeProcess find rindex. */
     commExprNode->rindex = queryState->rindex;
 
     return (PNode)commExprNode;
@@ -312,7 +401,8 @@ PNode TargetNodeProcess(PNode node, PQueryState queryState)
         rte = (PRangTblEntry)(tmpCell->value.pValue);
         colDef = GetAttrDef(rte->tblInfo, columnRefNode->field);
 
-        if(NULL == colDef)
+        /* found */
+        if(NULL != colDef)
             break; 
     }
 
@@ -331,7 +421,13 @@ PNode TargetNodeProcess(PNode node, PQueryState queryState)
     target = NewNode(TargetEntry);
     target->colRef = (PNode)resTarget;
     target->rindex = rte->rindex;
+    
     queryState->rindex = target->rindex;
+
+    if(queryState->querylevel > 1)
+        rte->isScaned = 1;
+    else
+        rte->isNeeded = 1;
 
     return (PNode)target;
 }
@@ -351,6 +447,7 @@ PQuery transformUtilityStmt(PNode parser)
 
 /* 
  * transform TargetList to TargetEntry
+ * TODO: * transform to all column
  */
 PList ProcessCheckTargetList(PList targetList, PQueryState queryState)
 {
@@ -544,3 +641,61 @@ PList ProcessAttrList(PList attrList, PQueryState queryState)
 
     return queryState->parentTargetList;
 }
+
+
+static PNode CommonQueryTransform(PQueryState queryState)
+{
+    PListCell tmpCell = NULL;
+    PTableList tblInfo = NULL;    
+    PRangTblEntry rangTbl = NULL;
+
+    PList rangTblList = queryState->rtable;
+    PList joinTree = queryState->joinTree;
+    PList targetList = queryState->parentTargetList;
+    int rindex = 1;
+
+    PBoolExpr boolExprNode = NULL;
+    PMergerEntry mergerNode = NULL;
+    PList parentTagetList = queryState->parentTargetList;
+
+    if((NULL == rangTblList) || (NULL == targetList))
+        return (PNode)joinTree;
+
+    /* No scanned table search from rang table. */
+    for(tmpCell = rangTblList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        rangTbl = (PRangTblEntry)GetCellNodeValue(tmpCell);
+        
+        if(rangTbl->isScaned)
+            continue;
+
+        /* table found, which needed by target for making sure. */
+        if(rangTbl->isNeeded)
+        {
+            
+        }                
+    }
+
+#if 0
+    mergerNode = NewNode(MergerEntry);
+    mergerNode->mergeType = boolExprNode->boolop;
+    mergerNode->rindex = -1;
+    mergerNode->targetList = NULL;
+   
+    /* next level has not target list. */
+    queryState->parentTargetList = NULL;
+
+    /* left and right subqual */
+    mergerNode->lefttree = QualNodeProcess(GetFirstCellNode(boolExprNode->args), queryState);
+    mergerNode->righttree = QualNodeProcess(GetSecondCellNode(boolExprNode->args), queryState);
+    mergerNode->isJoin = queryState->isJoin;
+
+    /* targetlist is subnode merger. */
+    mergerNode->targetList = parentTagetList;
+
+    /* restore parent targetlist */
+    queryState->parentTargetList = parentTagetList;
+#endif
+    return (PNode)joinTree;
+}
+

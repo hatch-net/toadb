@@ -70,4 +70,12 @@ typedef struct QueryTbl
     PList       targetList;   /* result columns */
 }QueryTbl, *PQueryTbl;
 
+typedef struct MergeResult
+{
+    NodeType    type;
+    PList       subplan;     /* list subnode */
+    PList       rtable;
+    PList       targetList;   /* result columns */
+}MergeResult, *PMergeResult;
+
 #endif

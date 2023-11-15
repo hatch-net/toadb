@@ -22,6 +22,9 @@ void ExecutorMain(PList list)
     PPlan subPlan = NULL;
     PListCell tmpCell = NULL;
     PExecState eState = NULL;
+    PMemContextNode oldContext = NULL;
+
+    oldContext = MemMangerNewContext("ExecutorMain");
 
     /* excutor subplan one by one */
     for(tmpCell = list->head; tmpCell != NULL; tmpCell = tmpCell->next)
@@ -34,6 +37,8 @@ void ExecutorMain(PList list)
         
         ExecutorEnd(eState);
     }
+
+    MemMangerSwitchContext(oldContext);
 
     return ;
 }
@@ -165,7 +170,7 @@ PTableRowData ExecNodeReScan(PExecState eState)
 
     PPlanStateNode node = (PPlanStateNode)eState->subPlanStateNode;
 
-    if(NULL != node)
+    if((NULL != node) && (NULL != node->execReScanNode))
         rowData = node->execReScanNode(eState);
 
     return rowData;

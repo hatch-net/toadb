@@ -20,6 +20,7 @@
 #include "buffer.h"
 #include "query.h"
 #include "plan.h"
+#include "memStack.h"
 
 #define log printf
 
@@ -54,6 +55,8 @@ int toadbMain(int argc, char *argv[])
         return -1;
     }
 
+    InitToad();
+
     while (1) 
     {
         printf("%s%s ", username, prompt);
@@ -84,6 +87,9 @@ int ToadMainEntry(char *query)
     List *parserTree = NULL;
     List *queryTree = NULL;
     List *planTree = NULL;
+    PMemContextNode oldContext = NULL;
+
+    oldContext = MemMangerNewContext("queryExcutor");
 
     /* 对输入的SQL进行词法和语法解析，生成解析树 */
     parserTree = raw_parser(query);
@@ -124,6 +130,17 @@ int ToadMainEntry(char *query)
 
     /* 释放解析树占用的内存资源 */
     ReleaseParserTreeResource(parserTree);
+    
+    oldContext = MemMangerSwitchContext(oldContext);
+    //MemMangerDeleteContext(oldContext);
+
+    return 0;
+}
+
+int InitToad()
+{
+    
+    MemMangerInit();
     return 0;
 }
 
@@ -131,6 +148,8 @@ int ExitToad()
 {
     /* 释放系统字典占用的内存资源 */
     ReleaseAllTblInfoResource();
+
+    MemMangerDestroy();
     return 0;
 }
 

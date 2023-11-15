@@ -110,8 +110,7 @@ PValuesData GetDataByIndex(int index, PList list)
 
 static void ShowBlank(int level)
 {
-    int i = 0;
-    for(i = level; i > 0; i--)
+    for(int i = level; i > 0; i--)
     {
         log("  ");
     }
@@ -372,6 +371,9 @@ static void ShowNodRangTbl(PNode n, char *prompt, int level)
 
     ShowBlank(level+1);
     log("relkind:%d \n", var->relkind);
+
+    ShowBlank(level+1);
+    log("isScaned:%d \n", var->isScaned);    
     
     TravelListCell((PList)var->targetList, "targetList", level+1);
     TravelListCell((PList)var->ValueList, "ValueList", level+1);

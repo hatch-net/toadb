@@ -58,6 +58,10 @@ typedef enum NodeType
 	T_ModifyTblState,
 	T_ProjectTblState,
 	T_QueryTblState,
+
+	/* memory manager */
+	T_MemContextNode,
+	T_MemNode,
 	T_END
 }NodeType;
 

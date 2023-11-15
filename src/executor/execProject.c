@@ -35,8 +35,6 @@ PTableRowData ExecTableQuery(PExecState eState)
     PQueryTblState planState = NULL;
     
     PTableRowData rowData = NULL;
-    PScanTableRowData scanTblRowInfo = NULL;
-
     int rowNum = 0;
 
     /*
@@ -74,13 +72,13 @@ PTableRowData ExecTableQuery(PExecState eState)
         }
 
         /* send to portal */
-        SendToPort(planState->stateNode, rowData);
+        SendToPort(&(planState->stateNode), rowData);
 
         rowNum++;
     }
     
     /* client show */
-    FinishSend(planState->stateNode->portal); 
+    FinishSend(planState->stateNode.portal); 
     eState->retCode = rowNum;
 
     return NULL;
@@ -117,21 +115,21 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
         rte = (PRangTblEntry)GetCellValueByIndex(rangTbl, targetEntry->rindex);
         if(NULL == rte)
         {
-            error("Rang table not founded.");
+            error("Rang table not founded.\n");
             break;
         }
 
         tblRowPosition = GetTblRowDataPosition(scanTblRowInfo, rte->tblInfo);
         if(NULL == tblRowPosition)
         {
-            error("rowdata position not founded.");
+            error("rowdata position not founded.\n");
             break;
         }
 
         rawcolrow[colrowIndex] = GetColRowData(tblRowPosition, colDef);
         if(NULL == rawcolrow[colrowIndex])
         {
-            error("column %d rowdata not founded.", colrowIndex);
+            error("column %d rowdata not founded.\n", colrowIndex);
             break;
         }
 
@@ -144,7 +142,7 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
     }
     else
     {
-        error("column %d rowdata, and target request %d column, not equality.", colrowIndex, targetList->length);
+        error("column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
     }
 
     return resultRowData;
@@ -160,7 +158,7 @@ static PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumn
     int *colIndexArr = NULL;
     int attrIndex = -1;
     
-    int pageno = -1, rowno = -1;
+    int pageno = -1, pageOffset = -1;
     int i = 0;
 
     if(tblRowPosition->rowNum <= 0)
@@ -188,8 +186,12 @@ static PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumn
     }
     
     /* coldata read from page. */
+    if(tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum > 0)
+        pageOffset = tblRowPosition->rowDataPosition->scanPostionInfo->searchPageList->item_offset;
+
     pageno = GetPageNoFromGroupInfo(&(tblRowPosition->rowDataPosition->scanPostionInfo->groupPageInfo), attrIndex);
-    colRowData = GetRowDataFromPageByIndex(tblRowPosition->tblInfo, pageno, rowno);
+
+    colRowData = GetRowDataFromPageByIndex(tblRowPosition->tblInfo, pageno, pageOffset);
 
     return colRowData;
 }

@@ -52,21 +52,21 @@ typedef struct ScanState
 
 typedef struct RowDataPosition
 {
-    PTableRowData rowData;
     PScanPageInfo scanPostionInfo;
+    PTableRowData rowData;
 }RowDataPosition, *PRowDataPosition;
 
 typedef struct TableRowDataPosition
 {
-    PRowDataPosition rowDataPosition;
     int rowNum;
     PTableList tblInfo;
+    PRowDataPosition rowDataPosition;       /* array list */
 }TableRowDataPosition, *PTableRowDataPosition;
 
 typedef struct ScanTableRowData
 {
-    PTableRowDataPosition tableRowData;
     int tableNum;
+    PTableRowDataPosition tableRowData;     /* array list */
 }ScanTableRowData, *PScanTableRowData;
 
 // #define GetScanState(ptbl) ((PScanState)((unsigned long)ptbl - GetOffsetSize(tblInfo, ScanState)))

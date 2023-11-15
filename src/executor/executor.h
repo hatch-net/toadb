@@ -22,6 +22,8 @@ typedef struct ExecState
     PNode       planState;
     PNode       subPlanNode;
     PNode       subPlanStateNode;
+    PTableRowData scanRowDataLeft;
+    PTableRowData scanRowDataRight;
     int         isTop;
     int         retCode;
 }ExecState, *PExecState;

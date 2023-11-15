@@ -62,6 +62,7 @@ PList CreateCell(PList list);
 
 /* append node to the list tail */
 PList AppendNode(PList list, PNode n);
+PList AppendCellNode(PList list, PListCell cell);
 
 /* create empty list, and append the node to the tail if it is not null. */
 PList CreateList(PNode n);

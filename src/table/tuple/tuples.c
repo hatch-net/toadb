@@ -56,10 +56,9 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
         attrValue = GetDataByIndex(attrIndex, (PList)valueList);
         if(attrValue == NULL)
         {
-            int i = 0;
             log("attr and values is not match. \n");
             /* TODO resource release. */
-            for(i = 0; i < tblMeta->colNum; i++)
+            for(int i = 0; i < tblMeta->colNum; i++)
             {
                 if(rawRows->columnData[i] != NULL)
                     FreeMem(rawRows->columnData[i]);
@@ -112,7 +111,7 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
                 rawRows->columnData[index] = (PRowColumnData)AllocMem(size);
                 rawRows->columnData[index]->size = size;
                 rawRows->columnData[index]->attrindex = index;
-                memcpy(rawRows->columnData[index]->data, attrData->val.pData, sizeof(char));
+                rawRows->columnData[index]->data[0] = attrData->val.cData ;
                 break;
             case VT_DOUBLE:
             case VT_FLOAT:

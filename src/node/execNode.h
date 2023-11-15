@@ -28,7 +28,7 @@ typedef struct PlanStateNode
 
 typedef struct PlanState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
 
     PNode       left;
     PNode       right;    
@@ -37,33 +37,33 @@ typedef struct PlanState
 
 typedef struct NestLoopState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
 
     PNode       left;
     PNode       right;
+    PNode       outResultRow;
     int         outerNeedNew;
     int         outerIsEnd;
     int         innerNeedNew;
     int         innerIsEnd;
-    PTableRowData scanRowDataLeft;
-    PTableRowData scanRowDataRight;
+
 }NestLoopState, *PNestLoopState;
 
 typedef struct SeqScanState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
     PScanState scanState;
 }SeqScanState, *PSeqScanState;
 
 typedef struct ValueScanState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
     PScanState scanState;
 }ValueScanState, *PValueScanState;
 
 typedef struct ModifyTblState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
 
     PNode       left;
     PNode       right;
@@ -73,7 +73,7 @@ typedef struct ModifyTblState
 
 typedef struct ProjectTblState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
 
     PNode       subplanState;
 
@@ -83,7 +83,7 @@ typedef struct ProjectTblState
 
 typedef struct QueryTblState
 {
-    PPlanStateNode stateNode;
+    PlanStateNode stateNode;
 
     PNode       subplanState;
 

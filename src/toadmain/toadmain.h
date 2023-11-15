@@ -12,6 +12,7 @@ int toadbMain(int argc, char *argv[]) ;
 
 int ToadMainEntry(char *query);
 
+int InitToad();
 int ExitToad();
 
 int args_opt(int argc, char *argv[]);

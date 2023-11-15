@@ -19,66 +19,6 @@
 
 DList* g_TblList = NULL;
 
-#define DEBUG_MEM_BARRIER 0xBE
-#define DEBUG_MEM_TYPE_SIZE (sizeof(int))
-#define DEBUG_MEM_BARRIER_SIZE (3 * DEBUG_MEM_TYPE_SIZE)
-
-void *AllocMem(unsigned int size)
-{
-    char *pMem = NULL;
-
-#ifdef MEM_DEBUG
-    char *start = NULL;
-    
-    /* prev and after */
-    size += DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
-#endif
-    pMem = (char *)malloc(size);
-    if(NULL == pMem)
-    {
-        log("alloc mem %d failure. \n", size);
-        exit(-1);
-    }
-#ifdef MEM_DEBUG
-    start = pMem;
-    /* prev */
-    memset(pMem, DEBUG_MEM_BARRIER, DEBUG_MEM_TYPE_SIZE);
-    pMem += DEBUG_MEM_TYPE_SIZE;
-
-    *((unsigned int*)pMem)= size;
-    pMem += DEBUG_MEM_TYPE_SIZE;
-
-    memset(pMem, DEBUG_MEM_BARRIER, DEBUG_MEM_TYPE_SIZE);
-    pMem += DEBUG_MEM_TYPE_SIZE;
-
-
-    /* after */
-    size -= DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
-    memcpy(pMem+size, start, DEBUG_MEM_BARRIER_SIZE);
-    
-    /* zero user space */
-    memset(pMem, 0x00, size);
-#endif
-    
-    return (void *)pMem;
-}
-
-int FreeMem(void *pMem)
-{
-    if(NULL == pMem)
-    {
-        return 0;
-    }
-
-#ifdef MEM_DEBUG
-    pMem -= DEBUG_MEM_BARRIER_SIZE;
-    memset(pMem+DEBUG_MEM_TYPE_SIZE+DEBUG_MEM_TYPE_SIZE, 0x00, DEBUG_MEM_TYPE_SIZE);
-#endif
-    free(pMem);
-
-    return 0;
-}
-
 /*
  * table metadata load from table and group files. 
  * filename: table name, is as table file. 
@@ -293,10 +233,9 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
         attrData = GetDataByIndex(attrIndex, stmt->valuesList);
         if(attrData == NULL)
         {
-            int i = 0;
             log("attr and values is not match. \n");
             /* TODO resource release. */
-            for(i = 0; i < tblMeta->colNum; i++)
+            for(int i = 0; i < tblMeta->colNum; i++)
             {
                 if(rawRows->columnData[i] != NULL)
                     FreeMem(rawRows->columnData[i]);
@@ -923,7 +862,7 @@ int GetPageNoFromGroupInfo(PSearchPageInfo groupInfo, int AttrIndex)
     gMemData =  (PMemberData)((char*)page + gItem->offset);
 
     /* default is first member */
-    pageno = gMemData[AttrIndex].member[0].pageno;
+    pageno = GetGroupMemberPageNo(gMemData, AttrIndex);
 
     return pageno;
 }
@@ -1497,7 +1436,7 @@ PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo)
 /*
  * Searching rowData, it is pecified by pageindex and rowIndex.
  */
-PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int rowIndex)
+PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int pageOffset)
 {
     PPageDataHeader page = NULL;
     PItemData Item = NULL;
@@ -1515,9 +1454,9 @@ PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int r
         return NULL;        
     }
     
-    if(rowIndex > 0)
+    if(pageOffset > 0)
     {
-        Item = (PItemData)GET_ITEM(rowIndex, page);
+        Item = (PItemData)GET_ITEM(pageOffset, page);
     }
 
     if(NULL == Item)
@@ -1570,4 +1509,16 @@ PColumnDefInfo GetAttrDef(PTableList tblInfo, char *attrName)
     }
 
     return colDef;
+}
+
+int GetGroupMemberPageNo(PMemberData memDataPos, int index)
+{
+    PMemberData pmData = NULL;
+
+    /* member pageoffset specify, default one pageOffset per member data  */   
+    int size = sizeof(MemberData) + sizeof(PageOffset);  
+
+    pmData = (PMemberData)((char*)(memDataPos) + index * size);
+
+    return pmData->member[0].pageno;
 }

@@ -10,6 +10,7 @@
 #include "parserNode.h"
 #include "list.h"
 #include "relation.h"
+#include "memStack.h"
 
 typedef struct ScanPageInfo  *PScanPageInfo;
 
@@ -54,8 +55,6 @@ typedef struct SearchPageInfo
 /* global dictionary list */
 extern DList* g_TblList;
 
-void *AllocMem(unsigned int size);
-int FreeMem(void *pMem);
 
 /* search table metadata infomation, if NULL, load from file. */
 PTableList GetTableInfo(char *filename);
@@ -84,11 +83,11 @@ int GetSpaceGroupPage(PTableList tblInfo, PTableRowData insertdata, PageOp op, P
 PGroupItemData FindGroupInfo(PTableList tblInfo, int groupId);
 PGroupItemData GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo);
 int GetPageNoFromGroupInfo(PSearchPageInfo groupInfo, int AttrIndex);
+int GetGroupMemberPageNo(PMemberData memDataPos, int index);
 
 PPageDataHeader GetFreeSpaceMemberPage(PTableList tblInfo, int size, PGroupItemData item, PageOp op, int colIndex);
 PPageDataHeader* GetGroupMemberPages(PTableList tblInfo, PGroupItemData item, int *pageNum);
 PPageDataHeader* GetGroupMemberPagesOpt(PTableList tblInfo, PScanPageInfo scanPageInfo);
-int GetPageNoFromGroupInfo(PSearchPageInfo groupInfo, int AttrIndex);
 
 /* insert one group info into group file */
 int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num);

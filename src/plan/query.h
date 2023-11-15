@@ -17,6 +17,7 @@ typedef struct QueryState
     int rindex;
     PList rtable;
     PList parentTargetList;
+    PList joinTree;
     PNode parserTree;
     PTableList tblInfo;     
 }QueryState, *PQueryState;
@@ -41,6 +42,10 @@ PNode MergerNodeProcess(PNode node, PQueryState queryState);
 PNode QualNodeProcess(PNode node, PQueryState queryState);
 
 PNode ExprNodeProcess(PNode node, PQueryState queryState);
+
+PNode JoinQualNodeProcess(PNode node, PQueryState queryState);
+
+PNode CommExprNodeProcess(PNode node, PQueryState queryState);
 
 PNode TargetNodeProcess(PNode node, PQueryState queryState);
 

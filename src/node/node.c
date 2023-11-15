@@ -142,6 +142,33 @@ PNode GetCellValueByIndex(PList list, int index)
     return GetCellNodeValue(tmpCell);
 }
 
+/* 
+ * Append the n node at the tail of list, 
+ * when list is NULL, creating at first.
+ */
+PList AppendCellNode(PList list, PListCell cell)
+{
+    if(NULL == list)
+    {
+        return NULL;
+    }
+    
+    /* add cell to this list */
+    if(list->length == 0)
+    {
+        list->head = cell;
+        list->tail = cell;
+    }
+    else
+    {
+        list->tail->next = cell;
+        list->tail = cell;
+    }
+    list->length += 1;
+
+    return list;
+}
+
 
 
 

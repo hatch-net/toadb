@@ -127,6 +127,7 @@ static PNode InitExecNodeSeqScan(PExecState eState)
     planState->scanState = InitScanState(((PRangTblEntry)(plan->rangTbl))->tblInfo, NULL);
 
     /* initialize search postion */
+    eState->subPlanStateNode = (PNode)planState;
     planState->scanState->scanPostionInfo = InitScanPositionInfo(eState);
 
     return (PNode)planState;
@@ -239,7 +240,7 @@ static PNode InitExecNodeQuerybl(PExecState eState)
     psn->commandType = eState->commandType;
     psn->portal = eState->portal;
     psn->plan = (PNode)plan;
-    psn->execProcNode = ExecTableQuery;
+    psn->execProcNode = ExecTableQueryNode;
 
     /* generator partal client title. */
     InitSelectPortal(plan->targetList, psn->portal);

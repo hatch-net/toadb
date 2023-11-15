@@ -19,4 +19,5 @@ PTableRowData ExecJoinExpreNode(PExecState eState);
 
 PTableRowData ReScanNestLoopNode(PExecState eState);
 
+PTableRowData ExecTableQueryNode(PExecState eState);
 #endif

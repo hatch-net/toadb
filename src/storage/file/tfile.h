@@ -73,6 +73,9 @@ typedef struct PageHeader
 
 #define ITEM_END_CHECK(item, page) (((char*)(item) - (char*)(page)) >= (page)->dataOffset)
 #define GET_ITEM(offset, page) ((PItemData)((char*)(page) + offset))
+
+#define GET_ITEM_BY_INDEX(index, page) ((PItemData)((char*)((page)->item) + index * sizeof(ItemData)))
+
 #define ITEM_OFFSET(item, page) ((char*)(item) - (char*)(page))
 #define ITEM_SIZE (sizeof(ItemData))
 

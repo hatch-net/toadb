@@ -76,3 +76,8 @@ PTableRowData ExecProcProjectTbl(PExecState eState)
 {
     return ExecTableProject(eState);
 }
+
+PTableRowData ExecTableQueryNode(PExecState eState)
+{
+    return ExecTableQuery(eState);
+}

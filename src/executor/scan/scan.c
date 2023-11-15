@@ -41,15 +41,40 @@ PScanState GetScanState(PTableList tblInfo, PScanState scanStateHead)
     return scanState;
 }
 
+/*
+ * transform common row to scanState row with position infomation.
+ */
 PScanTableRowData TransFormScanRowData(PTableRowData rowData, PScanState scanState)
 {
+    PScanTableRowData scanTblRowData = NULL;
+    PTableRowDataPosition tblRowDataPos = NULL;
+    PRowDataPosition rowDataPosition = NULL;
+
+    if((NULL == rowData) || (NULL == scanState))
+    {
+        return NULL;
+    }
+
+    rowDataPosition = (PRowDataPosition)AllocMem(sizeof(RowDataPosition));
+    rowDataPosition->rowData = rowData;
+    rowDataPosition->scanPostionInfo = scanState->scanPostionInfo;
+
+    tblRowDataPos = (PTableRowDataPosition)AllocMem(sizeof(TableRowDataPosition));
+    tblRowDataPos->tblInfo = scanState->tblInfo;
+    tblRowDataPos->rowDataPosition = rowDataPosition;
+    tblRowDataPos->rowNum = 1;
+
+    scanTblRowData = (PScanTableRowData)AllocMem(sizeof(ScanTableRowData));
+    scanTblRowData->tableNum = 1;       /* only scan maybe on one table. */
+    scanTblRowData->tableRowData = tblRowDataPos;
     
-    return NULL;
+
+    return scanTblRowData;
 }
 
 PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTableList tblInfo)
 {
-    PTableRowDataPosition tblRowPosition = NULL;
+    PTableRowDataPosition *ptblRowPosition = NULL;
     int tblIndex = 0;
 
     if((NULL == scanTblRow) || (NULL == tblInfo))
@@ -57,18 +82,21 @@ PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTable
         return NULL;
     }
 
-    tblRowPosition = scanTblRow->tableRowData;
+    ptblRowPosition = &(scanTblRow->tableRowData);
     for(tblIndex = 0; tblIndex < scanTblRow->tableNum; tblIndex++)
-    {        
-        if(tblInfo == tblRowPosition->tblInfo)
+    {   
+        if(NULL == *ptblRowPosition)
+            break;
+                 
+        if(tblInfo == (*ptblRowPosition)->tblInfo)
         {
             break;
         }
 
-        tblRowPosition++;
+        ptblRowPosition++;
     }
 
     if(tblIndex >= scanTblRow->tableNum)
-        tblRowPosition = NULL;
-    return tblRowPosition;
+        *ptblRowPosition = NULL;
+    return *ptblRowPosition;
 }

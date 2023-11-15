@@ -388,10 +388,11 @@ END:
         if(NULL != rawcolrow[index])
             FreeMem(rawcolrow[index]);
     }
+    
+    //FreeMem(rawcolrow);
 
 ENDONE:
-    FreeMem(rawcolrow);
-    
+        
     return (PTableRowData)TransFormScanRowData(rawrow, tblScan);
 }
 
@@ -402,6 +403,7 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
 {
     PSeqScanState seqScanStateNode = (PSeqScanState)eState->subPlanStateNode;
     PSeqScan seqScanPlaneNode = (PSeqScan)eState->subPlanNode;
+    PRangTblEntry rte = (PRangTblEntry)seqScanPlaneNode->rangTbl;
 
     PScanState tblScan = seqScanStateNode->scanState;
     PScanPageInfo scanPositionInfo = NULL;
@@ -424,14 +426,19 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     for(tmpCell = targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
     {
         PTargetEntry targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
-        PColumnDef colDef = (PColumnDef)targetEntry->colRef;
-
-        scanPositionInfo->colindexList[colIndex] = GetAttrIndex(tblScan->tblInfo, colDef->colName);
+        
+        if(targetEntry->rindex != rte->rindex)
+            continue;
+        
+        PResTarget restarget = (PResTarget)targetEntry->colRef;
+        PColumnRef colDef = (PColumnRef)restarget->val;
+        
+        scanPositionInfo->colindexList[colIndex] = GetAttrIndex(tblScan->tblInfo, colDef->field);
 
         colIndex++;
     } 
 
-    scanPositionInfo->pageListNum = targetList->length;
+    scanPositionInfo->pageListNum = colIndex;
 
     return scanPositionInfo;
 }

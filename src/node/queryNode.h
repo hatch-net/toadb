@@ -38,6 +38,8 @@ typedef struct RangTblEntry
     PTableList tblInfo;
     PNode ValueList;
     int rindex;
+    int isScaned;
+    int isNeeded;
 }RangTblEntry, *PRangTblEntry;
 
 typedef struct MergerEntry
