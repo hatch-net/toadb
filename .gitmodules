@@ -1,0 +1,3 @@
+[submodule "toadb.wiki"]
+	path = toadb.wiki
+	url = https://gitcode.com/toadb/toadb.wiki.git
