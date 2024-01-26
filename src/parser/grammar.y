@@ -1,8 +1,18 @@
-%{
 /*
  *	toadb grammar 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
+
+%{
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,7 +76,7 @@
 %token GREATER_EQ
 %token NOT_EQ
 
-%type <sval> tablename attr_type attr_name aliasname 
+%type <sval> tablename attr_type attr_name aliasname indirection_element
 
 %type <list> stmt_list columndef_list values_list multi_values_list values_opt attr_name_list_opt attr_name_list 
              sort_clause limit_clause target_opt target_list 
@@ -95,9 +105,9 @@
 %{
 
 #ifdef GRAMMAR_PARSER_LOG
-#define log printf
+#define hat_log printf
 #else 
-#define log
+#define hat_log
 #endif
 
 %}
@@ -108,13 +118,13 @@ top_stmt:  stmt_list
                 {
                     PSCANNER_DATA pExtData = (PSCANNER_DATA)yyget_extra(yyscaninfo);
                     pExtData->parserTree = $1; /* root of tree */
-                    log("top stmt \n");
+                    hat_log("top stmt \n");
                 }
         ;
 stmt_list:   ';'
                 {
                     /* empty */
-                    log("null stmt \n");
+                    hat_log("null stmt \n");
                     $$ = NULL;
                 }
             | stmt ';'
@@ -126,7 +136,7 @@ stmt_list:   ';'
                         list->tail->value.pValue = $1;
 
                         $$ = list;
-                        log("stmt \n");
+                        hat_log("stmt \n");
                     }
                     else
                         $$ = NULL;
@@ -139,7 +149,7 @@ stmt_list:   ';'
                         list->tail->value.pValue = $2;
                         
                         $$ = list;
-                        log("multi stmt \n");
+                        hat_log("multi stmt \n");
                     }
                     else
                         $$ = $1;
@@ -147,7 +157,7 @@ stmt_list:   ';'
         ;
 stmt:       select_stmt 
                     {
-                        log("stmt select stmt\n");
+                        hat_log("stmt select stmt\n");
                         $$ = $1;
                     }
             | insert_stmt
@@ -174,7 +184,7 @@ select_stmt: select_clause sort_clause limit_clause
 
                         $$ = (PNode)node;
 
-                        log("select_stmt \n");
+                        hat_log("select_stmt \n");
                     }
         ;
 select_clause: SELECT target_opt from_clause where_clause group_clause
@@ -189,13 +199,13 @@ select_clause: SELECT target_opt from_clause where_clause group_clause
 
                         $$ = (PNode)node;
                     
-                        log("select \n");
+                        hat_log("select \n");
                     }
         ;
 target_opt: target_list
                     {
                        $$ = $1;  
-                       log("target list \n");
+                       hat_log("target list \n");
                     }
             | /* empty */
                     {
@@ -211,7 +221,7 @@ target_list: target_element
                             
                         $$ = list;
 
-                        log("target element \n");
+                        hat_log("target element \n");
                     }
             | target_list ',' target_element 
                     {
@@ -231,7 +241,7 @@ target_element:
                         node->val = $1;
                         $$ = (PNode)node;
 
-                        log("target_element a_expr\n");
+                        hat_log("target_element a_expr\n");
                     }
             | a_expr AS aliasname
                     {
@@ -241,7 +251,7 @@ target_element:
                         node->val = $1;
                         $$ = (PNode)node;
 
-                        log("target_element a_expr as aliasname\n"); 
+                        hat_log("target_element a_expr as aliasname\n"); 
                     }
             | a_expr aliasname
                     {
@@ -251,7 +261,7 @@ target_element:
                         node->val = $1;
                         $$ = (PNode)node;
 
-                        log("target_element a_expr aliasname\n"); 
+                        hat_log("target_element a_expr aliasname\n"); 
                     }
             | '*'
                     {
@@ -262,7 +272,7 @@ target_element:
                         node->all = 1;
                         $$ = (PNode)node;
 
-                        log("target_element * \n"); 
+                        hat_log("target_element * \n"); 
                     }
         ;
 
@@ -270,7 +280,7 @@ target_element:
 a_expr: c_expr
                     {
                         $$ = $1;
-                        log("a_expr -> c_expr  \n"); 
+                        hat_log("a_expr -> c_expr  \n"); 
                     }
         | '+' a_expr %prec UMINUS
                     {
@@ -282,7 +292,7 @@ a_expr: c_expr
                         node->rexpr = NULL;
                         node->exprOpType = POSITIVE;
                         $$ = (PNode)node;
-                        log("a_expr -> +  \n"); 
+                        hat_log("a_expr -> +  \n"); 
                     }
         | '-' a_expr %prec UMINUS
                     {
@@ -295,7 +305,7 @@ a_expr: c_expr
                         node->rexpr = NULL;
                         node->exprOpType = NEGATIVE;
                         $$ = (PNode)node;
-                        log("a_expr -> -  \n"); 
+                        hat_log("a_expr -> -  \n"); 
                     }
         | a_expr '+' a_expr
                     {
@@ -307,7 +317,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = PLUS;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr + a_expr \n"); 
+                        hat_log("a_expr ->a_expr + a_expr \n"); 
                     }
         | a_expr '-' a_expr
                    {
@@ -319,7 +329,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = MINUS;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr - a_expr \n"); 
+                        hat_log("a_expr ->a_expr - a_expr \n"); 
                     }
         | a_expr '*' a_expr
                     {
@@ -331,7 +341,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = MULTIPLE;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr * a_expr \n"); 
+                        hat_log("a_expr ->a_expr * a_expr \n"); 
                     }
         | a_expr '/' a_expr  
                     {
@@ -343,7 +353,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = DIVISIION;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr / a_expr \n"); 
+                        hat_log("a_expr ->a_expr / a_expr \n"); 
                     }
         | a_expr '%' a_expr  
                     {
@@ -355,7 +365,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = MOD;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr % a_expr \n"); 
+                        hat_log("a_expr ->a_expr % a_expr \n"); 
                     }
         /* logical operators */
         | a_expr '>' a_expr
@@ -368,7 +378,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = GREATER;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr > a_expr \n"); 
+                        hat_log("a_expr ->a_expr > a_expr \n"); 
                     }
         | a_expr '<' a_expr     
                     {
@@ -380,7 +390,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = LESS;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr < a_expr \n"); 
+                        hat_log("a_expr ->a_expr < a_expr \n"); 
                     }  
         | a_expr '=' a_expr
                     {
@@ -392,7 +402,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = EQUAL;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr = a_expr \n"); 
+                        hat_log("a_expr ->a_expr = a_expr \n"); 
                     }
         | a_expr LESS_EQ a_expr
                     {
@@ -404,7 +414,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = LESS_EQUAL;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr <= a_expr \n"); 
+                        hat_log("a_expr ->a_expr <= a_expr \n"); 
                     }
         | a_expr GREATER_EQ a_expr   
                     {
@@ -416,7 +426,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = GREATER_EQUAL;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr >= a_expr \n"); 
+                        hat_log("a_expr ->a_expr >= a_expr \n"); 
                     }    
         | a_expr NOT_EQ a_expr
                     {
@@ -428,7 +438,7 @@ a_expr: c_expr
                         node->rexpr = (PNode)$3;
                         node->exprOpType = NOT_EQUAL;
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr <> a_expr \n"); 
+                        hat_log("a_expr ->a_expr <> a_expr \n"); 
                     }
         | a_expr AND a_expr       
                     {
@@ -441,7 +451,7 @@ a_expr: c_expr
                         node->args = list;
                         
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr AND a_expr \n"); 
+                        hat_log("a_expr ->a_expr AND a_expr \n"); 
                     }
         | a_expr OR a_expr
                     {
@@ -454,7 +464,7 @@ a_expr: c_expr
                         node->args = list;
                         
                         $$ = (PNode)node;
-                        log("a_expr ->a_expr OR a_expr \n"); 
+                        hat_log("a_expr ->a_expr OR a_expr \n"); 
                     }
         | NOT a_expr
                     {
@@ -465,7 +475,7 @@ a_expr: c_expr
                         node->args = list;
                         
                         $$ = (PNode)node;
-                        log("a_expr ->NOT a_expr \n"); 
+                        hat_log("a_expr ->NOT a_expr \n"); 
                     }
         ;
 c_expr: columnRef
@@ -483,17 +493,26 @@ c_expr: columnRef
                 }
     ;
 opt_indirection: /* empty */
-        | opt_indirection indirection_element
+        | opt_indirection indirection_element 
+            {
+                ;
+            }
     ;
 indirection_element:
-        '.' attr_name
+        '.' attr_name 
+            {
+                $$ = $2;
+            }
         | '.' '*'
+            {
+                $$ = "*";
+            }
     ;
 
 from_clause: FROM from_list
                 {
                     $$ = $2;
-                    log("from clause  \n");
+                    hat_log("from clause  \n");
                 }
             | /* empty */ 
                 {
@@ -505,7 +524,7 @@ from_list: table_ref
                     PList list = CreateList($1);
                     $$ = list;
 
-                    log("from_list table_ref  \n");
+                    hat_log("from_list table_ref  \n");
                 }
             | from_list ',' table_ref
                 {
@@ -527,7 +546,7 @@ relation_expr: tablename
                     node->relname = $1;
                     node->alias = NULL;
                     $$ = (PNode)node;
-                    log("from relation_expr %s  \n", $1);
+                    hat_log("from relation_expr %s  \n", $1);
                 }
         ;
 alias_clause_opt: alias_clause
@@ -552,14 +571,14 @@ alias_clause: AS aliasname '(' name_list ')'
                     PAlias node = (PAlias)CreateNode(sizeof(Alias),T_Alias);
                     node->aliasname = $2;
                     $$ = (PNode)node;
-                    log("alias_clause AS aliasname %s  \n", $2);
+                    hat_log("alias_clause AS aliasname %s  \n", $2);
                 }
             | aliasname
                 {
                     PAlias node = (PAlias)CreateNode(sizeof(Alias),T_Alias);
                     node->aliasname = $1;
                     $$ = (PNode)node;
-                    log("alias_clause aliasname %s  \n", $1);
+                    hat_log("alias_clause aliasname %s  \n", $1);
                 }
         ;
 name_list:
@@ -571,7 +590,7 @@ where_clause: WHERE a_expr
                 {
                     PList list = CreateList($2);
                     $$ = list;
-                    log("where clause \n");
+                    hat_log("where clause \n");
                 }
             | /* empty */
                 {
@@ -581,7 +600,7 @@ where_clause: WHERE a_expr
 group_clause: GROUP BY groupby_list
                 {
                     $$ = NULL;
-                    log("group clause\n");
+                    hat_log("group clause\n");
                 }
             | /* empty */
                 {
@@ -590,7 +609,7 @@ group_clause: GROUP BY groupby_list
         ;
 groupby_list: groupby_element
                 {
-                    log("groupby_list \n"); 
+                    hat_log("groupby_list \n"); 
                     $$ = NULL;
                 }
             | groupby_list ',' groupby_element
@@ -606,7 +625,7 @@ groupby_element: a_expr
 sort_clause: ORDER BY a_expr
                 {
                     $$ = NULL;
-                    log("sort clause\n");
+                    hat_log("sort clause\n");
                 }
             | /* empty */
                 {
@@ -616,7 +635,7 @@ sort_clause: ORDER BY a_expr
 limit_clause: LIMIT INTNUMBER
                 {
                     $$ = NULL;
-                    log("limit clause\n");
+                    hat_log("limit clause\n");
                 }
             | /* empty */
                 {
@@ -649,7 +668,7 @@ insert_stmt:    INSERT INTO tablename attr_name_list_opt VALUES multi_values_lis
                         node->valuesList = $6;
                         
                         $$ = (PNode)node;
-                        log("insert stmt %s\n", $3);
+                        hat_log("insert stmt %s\n", $3);
                     }
         ;
 attr_name_list_opt : /* empty */
@@ -677,7 +696,7 @@ attr_name_list: attr_name
                         }
                         else
                             $$ = NULL;
-                        log("insert stmt attr_name:%s\n", $1);
+                        hat_log("insert stmt attr_name:%s\n", $1);
                     }
                 | attr_name_list ',' attr_name
                     {
@@ -694,7 +713,7 @@ attr_name_list: attr_name
                         }
                         else
                             $$ = $1;
-                        log("insert stmt multi attr_name:%s\n", $3);
+                        hat_log("insert stmt multi attr_name:%s\n", $3);
                     }
         ;
 multi_values_list: values_opt
@@ -724,7 +743,7 @@ values_list:    value_data
                         }
                         else
                             $$ = NULL;
-                        log("insert stmt value_data\n");
+                        hat_log("insert stmt value_data\n");
                     }
                 | values_list ',' value_data
                     {
@@ -737,7 +756,7 @@ values_list:    value_data
                         }
                         else
                             $$ = $1;                    
-                        log("insert stmt multi value_data\n");
+                        hat_log("insert stmt multi value_data\n");
                     }
         ;
 value_data:     constValues
@@ -746,7 +765,7 @@ value_data:     constValues
                         node->valueNode = (PNode)$1;
                         $$ = (PNode)node;
 
-                        log("insert stmt value_data \n");
+                        hat_log("insert stmt value_data \n");
                     }
         ;
 columndef_list:    column_def
@@ -788,14 +807,17 @@ columnRef:  attr_name
                     {
                         PColumnRef node = (PColumnRef)CreateNode(sizeof(ColumnRef),T_ColumnRef);
                         node->field = $1;
-
+                        node->tableName = NULL;
                         $$ = (PNode)node;
-                        log("columnRef attr_name :%s \n", $1); 
+                        hat_log("columnRef attr_name :%s \n", $1); 
                     }
             | attr_name indirection_element
                     {
-                        /* TODO: 暂不支持 */
-                        $$ = NULL;
+                        PColumnRef node = (PColumnRef)CreateNode(sizeof(ColumnRef),T_ColumnRef);
+                        node->tableName = $1;
+                        node->field = $2;
+                        $$ = (PNode)node;
+                        hat_log("columnRef attr_name :%s.%s \n", node->tableName, node->field); 
                     }
         ;
 
@@ -812,7 +834,7 @@ constValues :  STRING
                         node->vt = VT_VARCHAR;
 
                         $$ = (PNode)node;     
-                        log("exprConst string :%s \n", $1);                   
+                        hat_log("exprConst string :%s \n", $1);                   
                     }
             | INTNUMBER 
                     {
@@ -821,7 +843,7 @@ constValues :  STRING
                         node->vt = VT_INT;
 
                         $$ = (PNode)node;    
-                        log("exprConst int :%d \n", $1);      
+                        hat_log("exprConst int :%d \n", $1);      
                     }
             | FLOATNUMBER
                     {
@@ -830,7 +852,7 @@ constValues :  STRING
                         node->vt = VT_FLOAT;
 
                         $$ = (PNode)node;    
-                        log("exprConst float :%f \n", $1);      
+                        hat_log("exprConst float :%f \n", $1);      
                     }
         ;
 

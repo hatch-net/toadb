@@ -11,9 +11,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "public.h"
 
-#define log printf
-#define error printf
 /*
  * there, we read one row from table, 
  * from tblScan marked offset and index of page.
@@ -28,7 +27,7 @@ PTableRowData SeqScanRawRow(PTableList tbl, PScanState tblScan)
 
     if(NULL == tbl || tblScan == NULL)
     {
-        log("ScanTableForRawRow argments is invalid\n");
+        hat_log("ScanTableForRawRow argments is invalid\n");
         return NULL;
     }
 
@@ -98,7 +97,7 @@ PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan)
 
     if(NULL == tbl || tblScan == NULL)
     {
-        log("ScanTableForRawRow argments is invalid\n");
+        hat_log("ScanTableForRawRow argments is invalid\n");
         return NULL;
     }
 
@@ -160,7 +159,7 @@ int ScanTable(PTableList tbl, PScanState tblScan)
 
     if(NULL == tbl || NULL == tblScan)
     {
-        log("ScanTable argments is invalid\n");
+        hat_log("ScanTable argments is invalid\n");
         return -1;
     }
     
@@ -241,7 +240,7 @@ int ScanOneTblRows(char *tblName, PScan scan)
     tblInfo = GetTableInfo(tblName);
     if (NULL == tblInfo)
     {
-        log("select table failure.\n");
+        hat_log("select table failure.\n");
         return -1;
     }
 
@@ -280,7 +279,7 @@ PTableRowData SeqscanNext(PExecState eState)
 
     if(NULL == tblScan->scanPostionInfo)
     {
-        error("table scanPostionInfo is NULL\n");
+        hat_error("table scanPostionInfo is NULL\n");
         return NULL;
     }
 
@@ -346,7 +345,7 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
 
     if(NULL == tbl || tblScan == NULL)
     {
-        log("ScanTableForRawRow argments is invalid\n");
+        hat_log("ScanTableForRawRow argments is invalid\n");
         return NULL;
     }
 
@@ -415,7 +414,7 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
 
     if((NULL == tblScan->tblInfo) || (NULL == targetList))
     {
-        error("table metadata is NULL\n");
+        hat_error("table metadata is NULL\n");
         return NULL;
     }
 

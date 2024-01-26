@@ -78,4 +78,13 @@ PScanTableRowData TransFormScanRowData(PTableRowData rowData, PScanState scanSta
 
 PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTableList tblInfo);
 
+/* 从结查rows 中找到对应列的值 */
+PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef);
+
+/*
+ * 输入值为当前列的值,
+ * 从行数据中获取一列的值
+ * 反之回值结构
+ */
+Data * TranslateRawColumnData(PTableRowData rowdata, PColumnRef colDef);
 #endif

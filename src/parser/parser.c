@@ -12,7 +12,7 @@
 #include "grammar.h"
 #include "buffer.h"
 
-#define log printf
+#define hat_log printf
 
 /* scanner_init declare is needed by raw_parser */
 extern void* scanner_init(char *sqlStr, PSCANNER_DATA yyext);
@@ -29,7 +29,7 @@ List* raw_parser(char *sqlstr)
     parserinfo = (PSCANNER_DATA)AllocMem(sizeof(SCANNER_DATA));
     if(parserinfo == NULL)
     {
-        log("Memory is not enough.\n");
+        hat_log("Memory is not enough.\n");
         return NULL;
     }
 

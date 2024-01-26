@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define log printf
+#define hat_log printf
 
 /* 
  * routine of modify table operators 
@@ -33,7 +33,7 @@ int ExecModifyTable(PTableList tblInfo, PTableRowData insertdata, NodeType type)
             ret = pax_ExecModifyTable(tblInfo, insertdata, type);
             break;
         default:
-            log("unknow table storage type %d. \n", tabletype);
+            hat_log("unknow table storage type %d. \n", tabletype);
             ret = -1;
             break;
     }
@@ -54,7 +54,7 @@ int nsm_ExecModifyTable(PTableList tblInfo, PTableRowData insertdata, NodeType t
             ret = nsm_ExecInsert(tblInfo, insertdata);
         break;
         default:
-            log("unsuport node type %d. \n", type);
+            hat_log("unsuport node type %d. \n", type);
             ret = -1;
         break;
     }
@@ -74,7 +74,7 @@ int nsm_ExecInsert(PTableList tblInfo, PTableRowData insertdata)
     ret = WriteRowData(tblInfo, pageInsert, insertdata);
     if(ret != 0)
     {
-        log("write row to page failure.[%d]\n", ret);
+        hat_log("write row to page failure.[%d]\n", ret);
     }
     return ret;
 }
@@ -93,7 +93,7 @@ int pax_ExecModifyTable(PTableList tblInfo, PTableRowData insertdata, NodeType t
             ret = pax_ExecInsert(tblInfo, insertdata);
         break;
         default:
-            log("unsuport node type %d of PAX storage . \n", type);
+            hat_log("unsuport node type %d of PAX storage . \n", type);
             ret = -1;
         break;
     }

@@ -27,9 +27,9 @@
 #include "grammar.h"
 
 #ifdef SCANNER_PARSER_LOG
-#define log printf
+#define hat_log printf
 #else 
-#define log
+#define hat_log
 #endif
 
 %}
@@ -135,17 +135,17 @@ AS      {
                     yylval->sval = strdup(yytext+1);
                     len = strlen(yylval->sval);
                     yylval->sval[len-1] = '\0';
-                    log("string :%s\n", yylval->sval);
+                    hat_log("string :%s\n", yylval->sval);
                     return STRING;
                 }
 {intnumber}        {
                     yylval->ival = atoi(yytext);
-                    log("digest :%d\n", yylval->ival);
+                    hat_log("digest :%d\n", yylval->ival);
                     return INTNUMBER;
                 }
 {floatnumber}   {
                     yylval->fval = atof(yytext);
-                    log("float :%f\n", yylval->fval);
+                    hat_log("float :%f\n", yylval->fval);
                     return FLOATNUMBER;
                 }
 {identify}      {

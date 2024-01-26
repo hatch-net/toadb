@@ -14,8 +14,8 @@
 #include "execInitNode.h"
 #include "execNodeProc.h"
 
-// #define log printf
-#define log 
+// #define hat_log printf
+#define hat_log 
 
 void ExecutorMain(PList list)
 {
@@ -82,7 +82,7 @@ void ExecutorStart(PNode subPlan, PExecState *eState)
 
     if(NULL == subPlan)
     {
-        log("[ExecutorStart]NULL subPlan\n");
+        hat_log("[ExecutorStart]NULL subPlan\n");
         return;
     }
 

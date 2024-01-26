@@ -1,7 +1,16 @@
 # Makefile toadb project
 # create by senllang 2021/1/1
 # mail : study@senllang.onaliyun.com
-# Copyright (C) 2023-2023, senllang
+# Copyright (c) 2023-2024 senllang
+# 
+# toadb is licensed under Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+# http://license.coscl.org.cn/MulanPSL2
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
 #
 
 
@@ -37,6 +46,9 @@ PARSER = ${PARSER_DIR}/grammar.c
 PARSER_H = ${PARSER_DIR}/grammar.h
 SCANNER_H = scanner.h
 
+# client source 
+CLIENT_DIR=$(topdir)/tools/tsql
+CLIENT_TARGET=${CLIENT_DIR}/toadsql
 ##########################################
 # test programme
 builddir = $(topdir)/build
@@ -92,7 +104,13 @@ $(SCANNER): ${PARSER_DIR}/scanner.l
 	cd ${PARSER_DIR}/
 	flex -o $@ $<
 	cd -
-	
+
+test: ${client} 
+	./test/startTest.sh 
+
+client: 
+	make -C ${CLIENT_DIR}/
+
 clean:
 	rm -rf ${TARGET} ${OBJS} ${builddir} $(topdir)/*.o ${SCANNER} ${PARSER} ${PARSER_H} ${SCANNER_H}
 	

@@ -16,7 +16,8 @@
 #include "execNestLoop.h"
 #include "execProject.h"
 
-#define log printf 
+
+#define hat_log printf 
 #define debug 
 
 typedef PNode (*InitExecFun)(PExecState eState);
@@ -34,7 +35,7 @@ static PNode InitExecNodePlan(PExecState eState)
     plan = (PPlan)eState->subPlanNode;
     if(NULL == plan)
     {
-        log("[InitExecNodePlan] subPlanNode is NULL\n");
+        hat_log("[InitExecNodePlan] subPlanNode is NULL\n");
         return NULL;
     }
 
@@ -210,9 +211,6 @@ static PNode InitExecNodeProjectTbl(PExecState eState)
     psn->plan = (PNode)plan;
     psn->execProcNode = ExecProcProjectTbl;
 
-    /* generator partal client title. */
-    InitSelectPortal(plan->targetList, psn->portal);
-
     /* process subplan node */
     if(NULL != plan->subplan)
     {
@@ -255,6 +253,36 @@ static PNode InitExecNodeQuerybl(PExecState eState)
     return (PNode)planState;
 }
 
+static PNode InitExecSelect(PExecState eState)
+{
+    PSelectState planState = NULL;
+    PPlanStateNode psn = NULL;
+    PSelectResult plan = NULL;
+
+    if(NULL == eState)
+        return NULL;
+
+    plan = (PSelectResult)eState->subPlanNode;
+
+    planState = NewNode(SelectState);
+    psn = (PPlanStateNode)planState;
+
+    psn->commandType = eState->commandType;
+    psn->portal = eState->portal;
+    psn->plan = (PNode)plan;
+    psn->execProcNode = ExecSelectResultNode;
+
+    /* process subplan node */
+    if(NULL != plan->subplan)
+    {
+        eState->subPlanNode = (PNode)plan->subplan;
+        planState->subplanState = InitExecNode(eState);   
+        planState->rtable = plan->rtable;    
+    }
+
+    return (PNode)planState;
+}
+
 PNode InitExecNode(PExecState eState)
 {
     PNode node = NULL;
@@ -288,6 +316,9 @@ PNode InitExecNode(PExecState eState)
         break;
         case T_QueryTbl:
             node = InitExecNodeQuerybl(eState);
+        break;
+        case T_SelectResult:
+            node = InitExecSelect(eState);
         break;
         default:
             node = NULL;

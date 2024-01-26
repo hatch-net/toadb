@@ -10,7 +10,7 @@
 #include "tuples.h"
 #include "scan.h"
 
-#define log printf
+#define hat_log printf
 
 
 /* values relation  scan */
@@ -80,7 +80,7 @@ int TransformValues(PExecState eState)
     PScanState scanState = NULL;
 
     PTableRowData rowData = NULL;
-    PNode targetList = NULL;
+    PList targetList = NULL;
     PList valueList = NULL;
     PNode values = NULL;
 

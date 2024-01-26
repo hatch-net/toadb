@@ -594,9 +594,9 @@ static yyconst flex_int32_t yy_rule_can_match_eol[31] =
 #include "grammar.h"
 
 #ifdef SCANNER_PARSER_LOG
-#define log printf
+#define hat_log printf
 #else 
-#define log
+#define hat_log
 #endif
 
 /* 空白符定义 */
@@ -1100,7 +1100,7 @@ YY_RULE_SETUP
                     yylval->sval = strdup(yytext+1);
                     len = strlen(yylval->sval);
                     yylval->sval[len-1] = '\0';
-                    log("string :%s\n", yylval->sval);
+                    hat_log("string :%s\n", yylval->sval);
                     return STRING;
                 }
 	YY_BREAK
@@ -1109,7 +1109,7 @@ YY_RULE_SETUP
 #line 141 "parser/scanner.l"
 {
                     yylval->ival = atoi(yytext);
-                    log("digest :%d\n", yylval->ival);
+                    hat_log("digest :%d\n", yylval->ival);
                     return INTNUMBER;
                 }
 	YY_BREAK
@@ -1118,7 +1118,7 @@ YY_RULE_SETUP
 #line 146 "parser/scanner.l"
 {
                     yylval->fval = atof(yytext);
-                    log("float :%f\n", yylval->fval);
+                    hat_log("float :%f\n", yylval->fval);
                     return FLOATNUMBER;
                 }
 	YY_BREAK

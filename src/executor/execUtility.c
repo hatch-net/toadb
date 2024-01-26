@@ -9,7 +9,7 @@
 #include "queryNode.h"
 #include "exectable.h"
 
-#define log printf
+#define hat_log printf
 
 void ExecutorUtility(PPlan plan, PPortal portal)
 {
@@ -25,7 +25,7 @@ void ExecutorUtility(PPlan plan, PPortal portal)
         case T_CreateStmt:
         {
             PCreateStmt createstmt = (PCreateStmt)parserNode;
-            log("exec T_CreateStmt Node: tablename:%s \n", createstmt->tableName);
+            hat_log("exec T_CreateStmt Node: tablename:%s \n", createstmt->tableName);
             ret = ExecCreateTable(createstmt, portal);
             snprintf(pbuf, PORT_BUFFER_SIZE, "Create table result %s", ret == 0? "success":"failure");
         }
@@ -33,13 +33,13 @@ void ExecutorUtility(PPlan plan, PPortal portal)
         case T_DropStmt:
         {
             PDropStmt dropstmt = (PDropStmt)parserNode;
-            log("exec T_DropStmt Node: drop table :%s \n", dropstmt->tableName);
+            hat_log("exec T_DropStmt Node: drop table :%s \n", dropstmt->tableName);
             ret = ExecDropTable(dropstmt, portal);
             snprintf(pbuf, PORT_BUFFER_SIZE, "Drop table result %s", ret == 0? "success":"failure");
         }
         break;
         default:
-            log("exec unknow command %d \n", parserNode->type);
+            hat_log("exec unknow command %d \n", parserNode->type);
             snprintf(pbuf, PORT_BUFFER_SIZE, "exec unknow command %d \n", parserNode->type);
         break;
     }

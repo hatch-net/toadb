@@ -22,5 +22,6 @@ PTableRowData ExecProcModifyTbl(PExecState eState);
 
 PTableRowData ExecProcProjectTbl(PExecState eState);
 
+PTableRowData ExecSelectResultNode(PExecState eState);
 
 #endif

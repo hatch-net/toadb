@@ -1,8 +1,16 @@
 /*
  *	toadb planNode 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
-
 #ifndef HAT_PLAN_NODE_H_H
 #define HAT_PLAN_NODE_H_H
 
@@ -12,7 +20,7 @@ typedef struct Plan
 {
     NodeType    type;
     CmdType     commandType;
-    PNode       QueryTree;
+    PNode       QueryTree;          /* 当前计划对应的逻辑执行计划 */
     int         planLevel;
     PNode       leftplan;
     PNode       rightplan;
@@ -77,5 +85,14 @@ typedef struct MergeResult
     PList       rtable;
     PList       targetList;   /* result columns */
 }MergeResult, *PMergeResult;
+
+typedef struct SelectResult
+{
+    NodeType    type;
+    PList       subplan;     /* list subnode */
+    PList       qual;        /* qual list */
+    PList       rtable;
+    PList       targetList;   /* qual target list */
+}SelectResult, *PSelectResult;
 
 #endif

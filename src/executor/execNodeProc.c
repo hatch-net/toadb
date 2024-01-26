@@ -13,6 +13,7 @@
 #include "exectable.h"
 #include "execNestLoop.h"
 #include "execProject.h"
+#include "execSelect.h"
 
 PTableRowData ExecProcPlan(PExecState eState)
 {
@@ -80,4 +81,9 @@ PTableRowData ExecProcProjectTbl(PExecState eState)
 PTableRowData ExecTableQueryNode(PExecState eState)
 {
     return ExecTableQuery(eState);
+}
+
+PTableRowData ExecSelectResultNode(PExecState eState)
+{
+    return ExecSelect(eState);
 }

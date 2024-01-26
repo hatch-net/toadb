@@ -1,6 +1,15 @@
 /*
  *	toadb parserNode 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
 #ifndef HAT_PARSER_NODE_H_H
@@ -9,14 +18,6 @@
 #include "node.h"
 #include "dataTypes.h"
 
-typedef union Data
-{
-	void *pData;
-	int  iData;
-	char cData;
-	double dData;
-	float fData;
-}Data;
 
 typedef struct CreateStmt
 {
@@ -91,10 +92,10 @@ typedef struct SelectStmt
 typedef struct ResTarget
 {
 	NodeType	type;
-	char	   *name;			
+	char	   *name;	/* alias name */
 	List	   *indirection;	
-	Node	   *val;
-	int 		all;			
+	Node	   *val;	/* column name or expr */
+	int 		all;	/* if ‘*’ ,set 1 , otherwise is 0. */		
 } ResTarget, *PResTarget;
 
 
@@ -104,7 +105,7 @@ typedef struct ResTarget
 typedef struct ColumnRef
 {
 	NodeType	type;
-	char	   *field;
+	char	   *field;		/* 此处为列的真实名称 */
 	char	   *tableName;
 	valueType   vt;
 }ColumnRef, *PColumnRef;
@@ -154,7 +155,8 @@ typedef enum A_A_Expr_Op_Type
 	MINUS,			/* - */
 	MULTIPLE,		/* * */
 	DIVISIION,		/* / */
-	MOD 			/* % */
+	MOD, 			/* % */
+	Op_Type_MAX 			/* max */
 }A_A_Expr_Op_Type;
 
 typedef struct A_Expr
@@ -162,7 +164,7 @@ typedef struct A_Expr
 	NodeType	type;
 	A_Expr_Type exprType;			
 	char	   *name;		
-	A_A_Expr_Op_Type exprOpType;
+	A_A_Expr_Op_Type exprOpType;	/* 表达式类型 */
 	Node	   *lexpr;			
 	Node	   *rexpr;			
 } A_Expr, *PA_Expr;

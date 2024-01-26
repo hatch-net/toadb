@@ -17,11 +17,11 @@
 typedef struct ExecState
 {
     CmdType     commandType;
-    PNode       plan;
+    PNode       plan;                   /* 原始计划树根节点 */
     PPortal     portal;
-    PNode       planState;
-    PNode       subPlanNode;
-    PNode       subPlanStateNode;
+    PNode       planState;              /* 原始计划树状态树根节点 */
+    PNode       subPlanNode;            /* 当前正在处理的计划树节点 */
+    PNode       subPlanStateNode;       /* 当前正在处理的计划树状态节点 */
     PTableRowData scanRowDataLeft;
     PTableRowData scanRowDataRight;
     int         isTop;

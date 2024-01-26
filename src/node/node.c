@@ -7,7 +7,7 @@
 #include "node.h"
 #include "buffer.h"
 
-#define log printf
+#define hat_log printf
 #define debug 
 
 /*
@@ -18,7 +18,7 @@ PNode CreateNode(int size, NodeType type)
     PNode node = AllocMem(size);
     if(NULL == node)
     {
-        log("list create, not enough memory.\n");
+        hat_log("list create, not enough memory.\n");
         exit(1);
     }
     debug("CreateNode node:%p size:%d \n", node, size);
@@ -36,7 +36,7 @@ PList CreateCell(PList list)
     PListCell cell = AllocMem(sizeof(ListCell));
     if(NULL == cell)
     {
-        log("list create, not enough memory.\n");
+        hat_log("list create, not enough memory.\n");
         exit(1);
     }
     cell->next = NULL;
@@ -97,7 +97,7 @@ PList AppendNode(PList list, PNode n)
     PListCell cell = AllocMem(sizeof(ListCell));
     if(NULL == cell)
     {
-        log("list create, not enough memory.\n");
+        hat_log("list create, not enough memory.\n");
         exit(1);
     }
     cell->next = NULL;
@@ -121,6 +121,32 @@ PList AppendNode(PList list, PNode n)
     return list;
 }
 
+PList MergeList(PList list1, PList list2)
+{
+    PListCell tmpCell = NULL;
+    PList tempList = NULL;
+
+    if(list1 == NULL)
+        return list2;
+
+    if(list2 == NULL)
+        return list1;
+
+    /* double list are not null here. */
+    for(tmpCell = list1->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        tempList = AppendCellNode(tempList, tmpCell);
+    }
+
+    for(tmpCell = list2->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        tempList = AppendCellNode(tempList, tmpCell);
+    }
+
+    return tempList;
+}
+
+/* 获取第几个节点 */
 PNode GetCellValueByIndex(PList list, int index)
 {
     PListCell tmpCell = NULL;
@@ -150,7 +176,8 @@ PList AppendCellNode(PList list, PListCell cell)
 {
     if(NULL == list)
     {
-        return NULL;
+        list = (PList)CreateNode(sizeof(List), T_List);
+        list->length = 0;
     }
     
     /* add cell to this list */
@@ -169,6 +196,60 @@ PList AppendCellNode(PList list, PListCell cell)
     return list;
 }
 
+PList DelListNode(PList list, PNode n)
+{
+    PList tmphead = list;
+    PListCell preCell = NULL, curCell = NULL;
+
+    if((NULL == list) || (NULL == n))
+        return NULL;
+    
+    for(curCell = list->head; curCell != NULL; curCell = curCell->next)
+    {
+        if(curCell->value.pValue == n)
+        {
+            break;
+        }
+        preCell = curCell;
+    }
+
+    /* not found */
+    if(curCell == NULL)
+        return tmphead;
+
+    /* found */
+    if(preCell == NULL)
+    {
+        /* list head node will be removed. */
+        if(tmphead->length == 1)
+        {
+            /* empty */
+            tmphead->head = tmphead->tail = NULL;
+            tmphead->length = 0;
+        }
+        else
+        {
+            /* change head linker */
+            tmphead->head = tmphead->head->next;
+            tmphead->length -= 1;
+        }                
+    }
+
+    /* tail node will be removed */
+    if(curCell == tmphead->tail)
+    {
+        tmphead->tail = preCell;
+        preCell->next = NULL;
+    }
+    else
+    {
+        preCell->next = curCell->next;
+    }
+
+    tmphead->length -= 1;
+
+    return tmphead;
+}
 
 
 

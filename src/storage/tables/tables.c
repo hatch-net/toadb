@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define log printf
+#define hat_log printf
 
 int TableOpen(PTableList tblInfo, ForkType forkNum)
 {
@@ -33,7 +33,7 @@ int TableOpen(PTableList tblInfo, ForkType forkNum)
     vfInfo = smgr_open(tblInfo->sgmr, tblInfo->tableDef->tableName, forkNum);
     if(NULL == vfInfo)
     {
-        //log("open table %s-%d failure.\n", tblInfo->tableDef->tableName, forkNum);
+        //hat_log("open table %s-%d failure.\n", tblInfo->tableDef->tableName, forkNum);
         return -1;
     }
 
@@ -42,7 +42,7 @@ int TableOpen(PTableList tblInfo, ForkType forkNum)
         page = smgr_read(vfInfo, &pageoffset);
         if(NULL == page)
         {
-            //log("read table %s-%d first page failure.\n", tblInfo->tableDef->tableName, forkNum);
+            //hat_log("read table %s-%d first page failure.\n", tblInfo->tableDef->tableName, forkNum);
             return -2;
         }
 
@@ -65,7 +65,7 @@ int TableCreate(char *fileName, ForkType forkNum)
     gfd = smgr_create(fileName, forkNum);
     if(gfd < 0)
     {
-        log("create table %s-%d failure.\n", fileName, forkNum);
+        hat_log("create table %s-%d failure.\n", fileName, forkNum);
         return -1;
     }
 
@@ -76,7 +76,7 @@ int TableCreate(char *fileName, ForkType forkNum)
         tfd = smgrOpen(fileName);
         if(tfd < 0)
         {
-            log("create table %s-%d failure.\n", fileName, forkNum);
+            hat_log("create table %s-%d failure.\n", fileName, forkNum);
             smgrClose(gfd);
             return -1;
         }
@@ -86,7 +86,7 @@ int TableCreate(char *fileName, ForkType forkNum)
         page = (PPageDataHeader)smgr_read(&vf, &pageoffset);
         if(NULL == page)
         {
-            log("read table %s-%d first page failure.\n", fileName, forkNum);
+            hat_log("read table %s-%d first page failure.\n", fileName, forkNum);
             smgrClose(gfd);
             smgrClose(tfd);
             return -1;
@@ -131,7 +131,7 @@ PPageHeader TableRead(PsgmrInfo smgrInfo, PPageOffset pageoffset, ForkType forkN
     vpos = SearchVF(smgrInfo->vfhead, forkNum);
     if(NULL == vpos)
     {
-        log("file not opened %d \n", forkNum);
+        hat_log("file not opened %d \n", forkNum);
         return NULL;
     }
 
@@ -149,7 +149,7 @@ int TableWrite(PsgmrInfo smgrInfo, PPageHeader page, ForkType forkNum)
     vpos = SearchVF(smgrInfo->vfhead, forkNum);
     if(NULL == vpos)
     {
-        log("file not opened %d \n", forkNum);
+        hat_log("file not opened %d \n", forkNum);
         return -1;
     }
 
@@ -166,7 +166,7 @@ int TableDrop(PTableList tblInfo)
 
     if(NULL == tblInfo)
     {
-        log("exec drop table failure. unknow table name.\n");
+        hat_log("exec drop table failure. unknow table name.\n");
         return -1;
     }
 
@@ -174,7 +174,7 @@ int TableDrop(PTableList tblInfo)
     ret = DeleteTableFile(tblInfo->tableDef->tableName);
     if(0 != ret)
     {
-        log("exec drop %s table failure.\n", tblInfo->tableDef->tableName);
+        hat_log("exec drop %s table failure.\n", tblInfo->tableDef->tableName);
         return -1;
     }
 

@@ -14,7 +14,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#define log printf 
+#define hat_log printf 
+
+#define NULL_VALUE " "
 
 static int fillBack(char *buf, char op, int size);
 
@@ -84,7 +86,7 @@ int InitSelectPortal(PList targetList, PPortal portal)
         tblInfo = GetTableInfo(node->tblRefName);
         if (NULL == tblInfo)
         {
-            log("select table failure.\n");
+            hat_log("select table failure.\n");
             return -1;
         }
 
@@ -485,7 +487,7 @@ int FinishSend(PPortal portal)
     ret = CalculatorColumnWidth(portal, portal->attrWidth);
     if(ret < 0)
     {
-        log("[FinishSend] calculator column width falure.ret[%d]\n", ret);
+        hat_log("[FinishSend] calculator column width falure.ret[%d]\n", ret);
         return ret;
     }
 
@@ -493,7 +495,7 @@ int FinishSend(PPortal portal)
     ret = GeneralVirtualTableHead(portal);
     if(ret < 0)
     {
-        log("[FinishSend] generate virtual table headline falure.ret[%d]\n", ret);
+        hat_log("[FinishSend] generate virtual table headline falure.ret[%d]\n", ret);
         return ret;
     }
 
@@ -595,12 +597,21 @@ int ClientRowDataShow(PPortal portal)
  */
 static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, int Maxwidth)
 {
-    int width = Maxwidth;
     int size = 0;
 
     if(NULL == colmnData)
     {
         return -1;
+    }
+
+    if(colmnData->size == MIN_DATA_SIZE)
+    {
+        if(buffer)
+        {
+            snprintf(buffer, PORT_BUFFER_SIZE, "|%*s", Maxwidth, NULL_VALUE);  
+        }
+
+        return strlen(NULL_VALUE)+1;
     }
 
     switch(vt)
@@ -611,13 +622,12 @@ static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, in
             int *tmp = NULL;
             char digit[128];
 
-
             tmp = (int *)(colmnData->data);
             snprintf(digit, 128, "%d", *tmp);
             size = strlen(digit);
 
             if(size > Maxwidth)
-                width = size;
+                Maxwidth = size;
 
             if(buffer)
             {
@@ -632,7 +642,7 @@ static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, in
             size = colmnData->size;
             
             if(size > Maxwidth)
-                width = size;
+                Maxwidth = size;
 
             if(buffer)
             {
@@ -643,8 +653,10 @@ static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, in
         case VT_CHAR:
         {
             char data = colmnData->data[0];
-             
-            width = sizeof(char);
+            size = sizeof(char);
+
+            if(size > Maxwidth)
+                Maxwidth = size;            
 
             if(buffer)
             {
@@ -663,7 +675,7 @@ static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, in
             size = strlen(digit);
 
             if(size > Maxwidth)
-                width = size;
+                Maxwidth = size;
 
             if(buffer)
             {
@@ -674,8 +686,10 @@ static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, in
         case VT_BOOL:
         {
             char data = colmnData->data[0];
+            size = sizeof(char);
 
-            width = sizeof(char);
+            if(size > Maxwidth)
+                Maxwidth = size; 
 
             if(buffer)
             {
@@ -687,5 +701,5 @@ static int GetValueInfo(valueType vt, PRowColumnData colmnData, char *buffer, in
         break;
     }                    
 
-    return width;
+    return Maxwidth;
 }

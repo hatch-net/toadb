@@ -4,8 +4,11 @@
 */
 
 #include "scan.h"
+#include "public.h"
+
 #include <stddef.h>
 #include <string.h>
+
 
 /* 
  * Initialize scanState ,which is alive untile scan end. 
@@ -99,4 +102,119 @@ PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTable
     if(tblIndex >= scanTblRow->tableNum)
         *ptblRowPosition = NULL;
     return *ptblRowPosition;
+}
+
+
+
+/*
+ * getting rowdata, specified colmn infomation.
+ */
+PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef)
+{
+    PTableRowData colRowData = NULL;
+    
+    int *colIndexArr = NULL;
+    int attrIndex = -1;
+    
+    int pageno = -1, pageOffset = -1;
+    int i = 0;
+
+    if(tblRowPosition->rowNum <= 0)
+    {
+        return NULL;
+    }
+
+    /* column index of table metadata. */
+    attrIndex = GetAttrIndex(tblRowPosition->tblInfo, colDef->field);
+    if(attrIndex < 0)
+    {
+        return NULL;
+    }
+
+    /* coldata is already readed? */
+    colIndexArr = tblRowPosition->rowDataPosition->scanPostionInfo->colindexList;
+    for(i = 0; i < tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum; i++)
+    {
+        if(attrIndex == colIndexArr[i])
+        {
+            /* TODO: alread exist */
+            colRowData = FormColData2RowData(tblRowPosition->rowDataPosition->rowData->columnData[i]);
+            return colRowData;
+        }
+    }
+    
+    /* coldata read from page. */
+    if(tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum > 0)
+        pageOffset = tblRowPosition->rowDataPosition->scanPostionInfo->searchPageList->item_offset;
+
+    pageno = GetPageNoFromGroupInfo(&(tblRowPosition->rowDataPosition->scanPostionInfo->groupPageInfo), attrIndex);
+
+    colRowData = GetRowDataFromPageByIndex(tblRowPosition->tblInfo, pageno, pageOffset);
+
+    return colRowData;
+}
+
+
+/*
+ * 输入值为当前列的值
+ * 从行数据中获取一列的值
+ * 反之回值结构
+ */
+Data * TranslateRawColumnData(PTableRowData rawRows, PColumnRef colDef)
+{
+    Data *pvalue = NULL;	 
+
+    pvalue = (Data *)AllocMem(sizeof(Data));
+
+    switch(colDef->vt)
+    {
+        case VT_INT:
+        case VT_INTEGER:
+        {
+            int *tmp = NULL;
+
+            tmp = (int *)(rawRows->columnData[0]->data);
+            pvalue->iData = *tmp;
+        }
+        break;
+
+        case VT_VARCHAR:
+        case VT_STRING:
+        {
+            int len = rawRows->columnData[0]->size;
+            pvalue->pData = (void*)AllocMem(len);
+            memcpy(pvalue->pData, rawRows->columnData[0]->data, len);
+        }
+        break;
+
+        case VT_CHAR:
+        {
+            /* char from input, which is string, only length is 1. */
+            int len = sizeof(char) + 1;
+            pvalue->pData = (void*)AllocMem(len);
+            memset(pvalue->pData, 0x00, len);
+
+            memcpy(pvalue->pData, rawRows->columnData[0]->data, len-1);
+        }
+        break;
+
+        case VT_DOUBLE:
+        case VT_FLOAT:
+        {
+            float *tmp = (float *)(rawRows->columnData[0]->data);
+            pvalue->fData = *tmp;
+        }
+        break;
+        
+        case VT_BOOL:                
+            pvalue->iData = rawRows->columnData[0]->data[0] == 'T' ? 1:0;
+        break;
+
+        default:
+            hat_log("translate column type is not found. \n");
+            /* TODO resource release. */
+            return NULL;
+        }
+
+    return pvalue;
 }

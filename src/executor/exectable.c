@@ -19,7 +19,7 @@
 
 #include <errno.h>
 
-#define log printf
+#define hat_log printf
 extern char *DataDir;
 
 
@@ -43,7 +43,7 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
     
     if(NULL == stmt)
     {
-        log("create table stmt is NULL\n");
+        hat_log("create table stmt is NULL\n");
         return -1;
     }
 
@@ -70,7 +70,7 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
         column = (PColumnDef)(tmpCell->value.pValue);
         if(NULL == column)
         {
-            log("exec create %s table, column info invalid\n", tableinfo->tableName);
+            hat_log("exec create %s table, column info invalid\n", tableinfo->tableName);
             return -1;
         }
 
@@ -78,7 +78,7 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
         tableinfo->column[i].type = GetColumnType(column->colType);
         if(tableinfo->column[i].type < 0)
         {
-            log("exec create %s table, column type %s invalid\n", tableinfo->tableName, column->colType);
+            hat_log("exec create %s table, column type %s invalid\n", tableinfo->tableName, column->colType);
             return -1;
         }
 
@@ -92,7 +92,7 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
     tablefile = CreateTableFile(tableinfo->tableName, 0666);
     if(tablefile < 0)
     {
-        log("exec create %s table failure.\n", tableinfo->tableName);
+        hat_log("exec create %s table failure.\n", tableinfo->tableName);
         return -1;
     }
 
@@ -101,7 +101,7 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
     ret = FlushBuffer(&tbl_temp, pagebuffer);
     if(ret < 0)
     {
-        log("exec create %s table failure,errno[%d].\n", tableinfo->tableName, ret);
+        hat_log("exec create %s table failure,errno[%d].\n", tableinfo->tableName, ret);
         return -1;
     }
     
@@ -111,7 +111,7 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
     ret = TableCreate(tableinfo->tableName, GROUP_FORK);
     if (ret < 0)
     {
-        log("create %s group file failure.\n", tableinfo->tableName);
+        hat_log("create %s group file failure.\n", tableinfo->tableName);
     }
 
     return ret;
@@ -125,7 +125,7 @@ int ExecDropTable(PDropStmt stmt, PPortal portal)
 
     if(NULL == stmt)
     {
-        log("drop table stmt is NULL\n");
+        hat_log("drop table stmt is NULL\n");
         return -1;
     }
 
@@ -133,7 +133,7 @@ int ExecDropTable(PDropStmt stmt, PPortal portal)
     tblInfo = GetTableInfo(stmt->tableName);
     if(NULL == tblInfo)
     {
-        log("drop table %s failure, It's not exist.\n",stmt->tableName);
+        hat_log("drop table %s failure, It's not exist.\n",stmt->tableName);
         return -1;
     }
 
@@ -152,7 +152,7 @@ int ExecInsertStmt(PInsertStmt stmt, PPortal portal)
 
     if(NULL == stmt)
     {
-        log("insert table stmt is NULL\n");
+        hat_log("insert table stmt is NULL\n");
         return -1;
     }
 
@@ -160,7 +160,7 @@ int ExecInsertStmt(PInsertStmt stmt, PPortal portal)
     tblInfo = GetTableInfo(stmt->tableName);
     if(NULL == tblInfo)
     {
-        log("insert table failure.\n");
+        hat_log("insert table failure.\n");
         return -1;
     }
     
@@ -187,13 +187,13 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
 
     if(NULL == stmt)
     {
-        log("select table stmt is NULL\n");
+        hat_log("select table stmt is NULL\n");
         return -1;
     }
 
     if(stmt->relrange == NULL)
     {
-        log("table reference is null. \n");
+        hat_log("table reference is null. \n");
         return 0;
     }
 
@@ -202,7 +202,7 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
     /* create portal, which will store all rows. */
     if(InitSelectPortal(stmt->targetlist, portal) < 0)
     {
-        log("select excutor failure.\n");
+        hat_log("select excutor failure.\n");
         return -1;
     }
     scan.portal = portal;
@@ -227,8 +227,8 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
  */
 PTableRowData ExecMergeRowData(PExecState eState)
 {
-    PScanTableRowData scanTblRowInfo = NULL, rightRow = NULL, leftRow = NULL;;
-    PTableRowDataPosition *tblRow = NULL;
+    PScanTableRowData scanTblRowInfo = NULL, rightRow = NULL, leftRow = NULL, tmpRow = NULL;
+    PTableRowDataPosition *tblRow = NULL, *tmpRowData = NULL;
     int tableNum = 0;
     int index = 0;
 
@@ -252,19 +252,24 @@ PTableRowData ExecMergeRowData(PExecState eState)
 
     scanTblRowInfo = (PScanTableRowData)AllocMem(sizeof(ScanTableRowData) + (tableNum -1) *sizeof(PTableRowDataPosition));
     tblRow = &(scanTblRowInfo->tableRowData);
-
-    if(NULL != leftRow)
-    {
-        tblRow[index] = leftRow->tableRowData;
-        index ++;
-    }
-
-    if(NULL != rightRow)
-    {
-        tblRow[index] = rightRow->tableRowData;
-    }
-
     scanTblRowInfo->tableNum = tableNum;
+
+    tmpRow = leftRow;
+    while(NULL != tmpRow)
+    {
+        tmpRowData = &(tmpRow->tableRowData);
+        tableNum = tmpRow->tableNum;
+        while(tableNum-- > 0)
+        {
+            tblRow[index++] = *(tmpRowData++);
+        }
+        
+        if(index == scanTblRowInfo->tableNum)
+            break;
+
+        tmpRow = rightRow;
+    }
+
     return (PTableRowData)scanTblRowInfo;
 }
 

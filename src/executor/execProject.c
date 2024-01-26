@@ -1,6 +1,16 @@
 /*
  *	toadb project node proc
- * Copyright (C) 2023-2023, senllang
+ *
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
 #include "execProject.h"
@@ -8,21 +18,40 @@
 #include "planNode.h"
 #include "execNode.h"
 #include "queryNode.h"
+#include "public.h"
 
 #include <stdio.h>
 
-#define log printf
-#define error printf
 
 
 static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl);
 
-static PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef);
 
 PTableRowData ExecTableProject(PExecState eState)
 {
-    
-    return NULL;
+    PProjectTbl plan = NULL;
+    PProjectTblState planState = NULL;    
+    PTableRowData rowData = NULL;
+
+    /*
+     * eState->subPlanNode and  eState->subPlanStateNode 
+     * is current plan , planState Node;
+     */
+    plan = (PProjectTbl)eState->subPlanNode;
+    planState = (PProjectTblState)eState->subPlanStateNode;
+
+    eState->subPlanNode = (PNode)plan->subplan;
+    eState->subPlanStateNode = (PNode)planState->subplanState;
+    rowData = ExecNodeProc(eState);
+    if(NULL == rowData)
+    {
+        /* erorr ocurr, query ending. */
+        return NULL;
+    }
+
+    /* transform column data matching targetlist. */
+    rowData = FetchTargetColumns((PScanTableRowData)rowData, plan->targetList, plan->rtable);
+    return rowData;
 }
 
 /*
@@ -63,14 +92,6 @@ PTableRowData ExecTableQuery(PExecState eState)
             break;
         }
 
-        /* transform column data matching targetlist. */
-        rowData = FetchTargetColumns((PScanTableRowData)rowData, plan->targetList, plan->rtable);
-        if(NULL == rowData)
-        {
-            /* erorr ocurr, query ending. */
-            break;
-        }
-
         /* send to portal */
         SendToPort(&(planState->stateNode), rowData);
 
@@ -86,6 +107,7 @@ PTableRowData ExecTableQuery(PExecState eState)
 
 /* 
  * fetch row data, which column matching targetlist. 
+ * 两个表的查询结果行，要根据target中的列信息，将行数据投影成一个新的结果行。
  */
 static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl)
 {
@@ -112,24 +134,27 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
         PResTarget restarget = (PResTarget)targetEntry->colRef;
         PColumnRef colDef = (PColumnRef)restarget->val;
 
+        /* 根据target中列对应的表index，找到表的信息记录 */
         rte = (PRangTblEntry)GetCellValueByIndex(rangTbl, targetEntry->rindex);
         if(NULL == rte)
         {
-            error("Rang table not founded.\n");
+            hat_error("Rang table not founded.\n");
             break;
         }
 
+        /* 根据表元数据定义，找到对应的表的查询行 */
         tblRowPosition = GetTblRowDataPosition(scanTblRowInfo, rte->tblInfo);
         if(NULL == tblRowPosition)
         {
-            error("rowdata position not founded.\n");
+            hat_error("rowdata position not founded.\n");
             break;
         }
 
+        /* 根据target中列的定义，找到对应列的信息进行投影，得到该表列的投影字段数组 */
         rawcolrow[colrowIndex] = GetColRowData(tblRowPosition, colDef);
         if(NULL == rawcolrow[colrowIndex])
         {
-            error("column %d rowdata not founded.\n", colrowIndex);
+            hat_error("column %d rowdata not founded.\n", colrowIndex);
             break;
         }
 
@@ -142,56 +167,8 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
     }
     else
     {
-        error("column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
+        hat_error("column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
     }
 
     return resultRowData;
-}
-
-/*
- * getting rowdata, specified colmn infomation.
- */
-static PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef)
-{
-    PTableRowData colRowData = NULL;
-    
-    int *colIndexArr = NULL;
-    int attrIndex = -1;
-    
-    int pageno = -1, pageOffset = -1;
-    int i = 0;
-
-    if(tblRowPosition->rowNum <= 0)
-    {
-        return NULL;
-    }
-
-    /* column index of table metadata. */
-    attrIndex = GetAttrIndex(tblRowPosition->tblInfo, colDef->field);
-    if(attrIndex < 0)
-    {
-        return NULL;
-    }
-
-    /* coldata is already readed? */
-    colIndexArr = tblRowPosition->rowDataPosition->scanPostionInfo->colindexList;
-    for(i = 0; i < tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum; i++)
-    {
-        if(attrIndex == colIndexArr[i])
-        {
-            /* TODO: alread exist */
-            colRowData = FormColData2RowData(tblRowPosition->rowDataPosition->rowData->columnData[i]);
-            return colRowData;
-        }
-    }
-    
-    /* coldata read from page. */
-    if(tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum > 0)
-        pageOffset = tblRowPosition->rowDataPosition->scanPostionInfo->searchPageList->item_offset;
-
-    pageno = GetPageNoFromGroupInfo(&(tblRowPosition->rowDataPosition->scanPostionInfo->groupPageInfo), attrIndex);
-
-    colRowData = GetRowDataFromPageByIndex(tblRowPosition->tblInfo, pageno, pageOffset);
-
-    return colRowData;
 }

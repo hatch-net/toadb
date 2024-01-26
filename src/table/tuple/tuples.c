@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define log printf
+#define hat_log printf
 
 /*
  * 由values list 形成内存中的tuple
@@ -56,7 +56,7 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
         attrValue = GetDataByIndex(attrIndex, (PList)valueList);
         if(attrValue == NULL)
         {
-            log("attr and values is not match. \n");
+            hat_log("attr and values is not match. \n");
             /* TODO resource release. */
             for(int i = 0; i < tblMeta->colNum; i++)
             {
@@ -73,7 +73,7 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
         /* TODO: the value is different type from table define. */
         if(attrData->vt != colDef[index].type)
         {
-            log("value type of column %s is %d, which is different from define type %d.\n", 
+            hat_log("value type of column %s is %d, which is different from define type %d.\n", 
                     colDef[index].colName, attrData->vt, colDef[index].type);
         }
 
@@ -107,11 +107,21 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
             }
                 break;
             case VT_CHAR:
-                size += sizeof(char);
+            {
+                int len = strlen(attrData->val.pData);
+
+                /* avoid store '\0' */
+                if(len > 0)
+                    size += sizeof(char);
+                
                 rawRows->columnData[index] = (PRowColumnData)AllocMem(size);
                 rawRows->columnData[index]->size = size;
                 rawRows->columnData[index]->attrindex = index;
-                rawRows->columnData[index]->data[0] = attrData->val.cData ;
+                
+                /* string type receive from std io */                
+                if(len > 0)
+                    memcpy(rawRows->columnData[index]->data, attrData->val.pData, sizeof(char));
+            }
                 break;
             case VT_DOUBLE:
             case VT_FLOAT:
@@ -124,7 +134,17 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
                 rawRows->columnData[index]->attrindex = index;
 
                 tmp = (float *)(rawRows->columnData[index]->data);
-                *tmp = attrData->val.fData;
+                
+                /* digest type received that will be int or float. */
+                if(attrData->vt == VT_FLOAT)
+                {
+                    *tmp = attrData->val.fData;
+                }
+                else if(attrData->vt == VT_INT)
+                {
+                    *tmp = attrData->val.iData;
+                }
+                hat_log("float type is not match values. \n");
             }
                 break;
             case VT_BOOL:
@@ -135,7 +155,7 @@ PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode 
                 rawRows->columnData[index]->data[0] = attrData->val.iData != 0?'T':'F';
                 break;
             default:
-                log("attr and values type is not match. \n");
+                hat_log("attr and values type is not match. \n");
                 /* TODO resource release. */
                 return rawRows;
         }

@@ -1,6 +1,15 @@
 /*
  *	toadb queryNode 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
 #ifndef HAT_QUERY_NODE_H_H
@@ -14,10 +23,12 @@ typedef struct Query
     NodeType    type;
     CmdType     commandType;
     int         queryId;
-    List        *targetList;
+    List        *targetList;    /* top target list */
     List        *rtable;        /* rang table list */
     List        *joinTree;      /* fromlist, qual */
-    PNode       parserTree;
+    List        *qualTargetList;    /* qual target list */
+    List        *rtjoinTree;      /* fromlist, qual */
+    PNode       parserTree;     /* raw parse tree */
 }Query, *PQuery;
 
 typedef enum RelationKind
@@ -31,15 +42,17 @@ typedef enum RelationKind
 typedef struct RangTblEntry 
 {
     NodeType	type;
-    PNode presTarget;       /* parser 解析的结果 */
     int relid;
     int relkind;
-    PNode targetList;
+    int rindex;             /* 索引计数 */
+    PNode presTarget;       /* parser 解析的结果 */
+    PRangeVar rangVar;      /* parser 解析 */
+    PList targetList;       /* 基本表的targetlist */
     PTableList tblInfo;
     PNode ValueList;
-    int rindex;
-    int isScaned;
-    int isNeeded;
+    int isScaned;       /* 是否已经被检查过有表达式中需要 */
+    int isNeeded;       /* 是否在顶层结果中需要 */
+    int isProExpr;      /* 是否加到了逻辑表达式列表中 */
 }RangTblEntry, *PRangTblEntry;
 
 typedef struct MergerEntry
@@ -69,10 +82,13 @@ typedef struct ExprEntry
 {
     NodeType	type;
     PList       targetList;
-    int         rindex;             /* 对应的RTE rindex */
+    int         rtNum;
+    int         rindex;              /* 对应的RTE rindex , 当rtNum = 1 */
+    int         rrindex;             /* 对应的RTE rindex , 当rtNum = 2 */
     int         op;
     PNode       lefttree;
     PNode       righttree;
+    int         isScan;
 }ExprEntry, *PExprEntry;
 
 

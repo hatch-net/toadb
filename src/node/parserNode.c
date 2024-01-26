@@ -1,6 +1,15 @@
 /*
  *	toadb parserNode 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +18,7 @@
 #include "queryNode.h"
 #include "planNode.h"
 
-#define log printf
+#define hat_log printf
 #define debug 
 
 
@@ -112,7 +121,7 @@ static void ShowBlank(int level)
 {
     for(int i = level; i > 0; i--)
     {
-        log("  ");
+        hat_log("  ");
     }
 }
 
@@ -121,7 +130,7 @@ static void ShowNodCreateStmt(PNode n, char *prompt, int level)
     PCreateStmt createstmt = (PCreateStmt)n;
 
     ShowBlank(level);
-    log("T_CreateStmt Node: tablename:%s \n", createstmt->tableName);
+    hat_log("T_CreateStmt Node: tablename:%s \n", createstmt->tableName);
 
     TravelListCell(createstmt->ColList, "T_CreateStmt ", level+1);
 }
@@ -131,7 +140,7 @@ static void ShowNodColumnDef(PNode n, char *prompt, int level)
     PColumnDef column = (PColumnDef)n;
 
     ShowBlank(level);
-    log("%s columnName:%s type:%s \n", prompt, column->colName, column->colType);
+    hat_log("%s columnName:%s type:%s \n", prompt, column->colName, column->colType);
 }
 
 static void ShowNodDropStmt(PNode n, char *prompt, int level)
@@ -144,16 +153,16 @@ static void ShowNodInsertStmt(PNode n, char *prompt, int level)
     PInsertStmt insertstmt = (PInsertStmt)n;
 
     ShowBlank(level);
-    log("{ T_InsertStmt Node: \n");
+    hat_log("{ T_InsertStmt Node: \n");
 
     ShowBlank(level+1);
-    log("table :%s \n", insertstmt->tableName);
+    hat_log("table :%s \n", insertstmt->tableName);
 
     TravelListCell(insertstmt->attrNameList, "attrNameList ", level+1);
     TravelListCell(insertstmt->valuesList, "values", level+1);
 
     ShowBlank(level);
-    log("} %s T_InsertStmt Node end\n", prompt);
+    hat_log("} %s T_InsertStmt Node end\n", prompt);
 }
 
 static void ShowNodAttrName(PNode n, char *prompt, int level)
@@ -161,7 +170,7 @@ static void ShowNodAttrName(PNode n, char *prompt, int level)
     PAttrName stmt = (PAttrName)n;
 
     ShowBlank(level);
-    log("%s T_AttrName Node: attrname :%s \n", prompt, stmt->attrName);
+    hat_log("%s T_AttrName Node: attrname :%s \n", prompt, stmt->attrName);
 }
 
 static void ShowNodValuesData(PNode n, char *prompt, int level)
@@ -169,7 +178,7 @@ static void ShowNodValuesData(PNode n, char *prompt, int level)
     PValuesData stmt = (PValuesData)n;
 
     ShowBlank(level);
-    log("T_ValuesData Node:  \n");
+    hat_log("T_ValuesData Node:  \n");
 
     ShowNode((PNode)stmt->valueNode, "valuesNode", level+1);
 }
@@ -179,10 +188,10 @@ static void ShowNodSelectStmt(PNode n, char *prompt, int level)
     PSelectStmt stmt = (PSelectStmt)n;
 
     ShowBlank(level);
-    log("{  %s T_SelectStmt Node begin: \n", prompt);
+    hat_log("{  %s T_SelectStmt Node begin: \n", prompt);
 
     ShowBlank(level+1);
-    log("selectAll:%d \n", stmt->selectAll);
+    hat_log("selectAll:%d \n", stmt->selectAll);
 
     TravelListCell(stmt->targetlist, "targetlist ", level+1);
     TravelListCell(stmt->relrange, "relrange ", level+1);
@@ -193,7 +202,7 @@ static void ShowNodSelectStmt(PNode n, char *prompt, int level)
     TravelListCell(stmt->limitClause, "limitClause ", level+1);
 
     ShowBlank(level);
-    log("}  %s T_SelectStmt Node end:   \n", prompt);
+    hat_log("}  %s T_SelectStmt Node end:   \n", prompt);
 }
 
 static void ShowNodTableRefName(PNode n, char *prompt, int level)
@@ -201,7 +210,7 @@ static void ShowNodTableRefName(PNode n, char *prompt, int level)
     PTableRefName stmt = (PTableRefName)n;
 
     ShowBlank(level);
-    log("%s T_TableRefName Node: table ref name:%s \n", prompt, stmt->tblRefName);
+    hat_log("%s T_TableRefName Node: table ref name:%s \n", prompt, stmt->tblRefName);
 }
 
 static void ShowNodColumnRef(PNode n, char *prompt, int level)
@@ -209,7 +218,11 @@ static void ShowNodColumnRef(PNode n, char *prompt, int level)
     PColumnRef var = (PColumnRef)n;
 
     ShowBlank(level+1);
-    log("%s ColumnRef field: %s \n", prompt, var->field);
+
+    if(var->tableName != NULL)
+        hat_log("%s ColumnRef field: %s.%s \n", prompt, var->tableName, var->field);
+    else 
+        hat_log("%s ColumnRef field: %s\n", prompt,  var->field);
 }
 
 static void ShowNodResTarget(PNode n, char *prompt, int level)
@@ -217,18 +230,18 @@ static void ShowNodResTarget(PNode n, char *prompt, int level)
     PResTarget var = (PResTarget)n;
 
     ShowBlank(level);
-    log("{ PResTarget begin: \n");
+    hat_log("{ PResTarget begin: \n");
 
     ShowBlank(level+1);
-    log("name: %s \n", var->name);
+    hat_log("name: %s \n", var->name);
 
     ShowBlank(level+1);
-    log("all: %d \n", var->all);
+    hat_log("all: %d \n", var->all);
 
     ShowNode((PNode)var->val, "val", level+1);
 
     ShowBlank(level);
-    log("} PResTarget end : \n");
+    hat_log("} PResTarget end : \n");
 }
 
 static void ShowNodConstValue(PNode n, char *prompt, int level)
@@ -236,41 +249,41 @@ static void ShowNodConstValue(PNode n, char *prompt, int level)
     PConstValue var = (PConstValue)n;
 
     ShowBlank(level);
-    log("%s ConstValue: \n", prompt);
+    hat_log("%s ConstValue: \n", prompt);
 
     ShowBlank(level);
-    log("vt: %d \n", var->vt);
+    hat_log("vt: %d \n", var->vt);
 
     switch(var->vt)
     {
         case VT_POINTER:
             ShowBlank(level);
-            log("string %s\n", var->val.pData);
+            hat_log("string %s\n", var->val.pData);
             break;
 	    case VT_INT:
             ShowBlank(level);
-            log("int %d\n", var->val.iData);
+            hat_log("int %d\n", var->val.iData);
             break;
 	    case VT_CHAR:
             ShowBlank(level);
-            log("char %c\n", var->val.cData);
+            hat_log("char %c\n", var->val.cData);
             break;
 	    case VT_DOUBLE:
             ShowBlank(level);
-            log("double %lf\n", var->val.dData);
+            hat_log("double %lf\n", var->val.dData);
             break;
 	    case VT_FLOAT:
             ShowBlank(level);
-            log("float %f\n", var->val.fData);
+            hat_log("float %f\n", var->val.fData);
             break;
         default:
             ShowBlank(level);
-            log("error data type\n");
+            hat_log("error data type\n");
             break;
     }
     
     ShowBlank(level);
-    log("isnull: %d \n", var->isnull);
+    hat_log("isnull: %d \n", var->isnull);
 }
 
 static void ShowNodA_Expr(PNode n, char *prompt, int level)
@@ -278,24 +291,24 @@ static void ShowNodA_Expr(PNode n, char *prompt, int level)
     PA_Expr var = (PA_Expr)n;
 
     ShowBlank(level);
-    log("{ A_Expr begin:  \n");
+    hat_log("{ A_Expr begin:  \n");
 
     ShowBlank(level+1);
-    log("name:%s \n", var->name);
+    hat_log("name:%s \n", var->name);
 
     ShowBlank(level+1);
-    log("exprType:%d \n", var->exprType);
+    hat_log("exprType:%d \n", var->exprType);
 
     ShowBlank(level+1);
-    log("left expr  \n");
+    hat_log("left expr  \n");
     ShowNode((PNode)var->lexpr, "left expr", level+1);
 
     ShowBlank(level+1);
-    log("right expr  \n");
+    hat_log("right expr  \n");
     ShowNode((PNode)var->rexpr, "right expr", level+1);
 
     ShowBlank(level);
-    log("}  A_Expr end:  \n");
+    hat_log("}  A_Expr end:  \n");
 }
 
 static void ShowNodBoolExpr(PNode n, char *prompt, int level)
@@ -303,15 +316,15 @@ static void ShowNodBoolExpr(PNode n, char *prompt, int level)
     PBoolExpr var = (PBoolExpr)n;
 
     ShowBlank(level);
-    log("{ %s BoolExpr begin: \n", prompt);
+    hat_log("{ %s BoolExpr begin: \n", prompt);
 
     ShowBlank(level);
-    log("boolop: %d \n", var->boolop);
+    hat_log("boolop: %d \n", var->boolop);
 
     TravelListCell(var->args, " ", level+1);
 
     ShowBlank(level);
-    log("} %s BoolExpr end:  \n", prompt);
+    hat_log("} %s BoolExpr end:  \n", prompt);
 }
 
 static void ShowNodAlias(PNode n, char *prompt, int level)
@@ -319,7 +332,7 @@ static void ShowNodAlias(PNode n, char *prompt, int level)
     PAlias var = (PAlias)n;
 
     ShowBlank(level);
-    log("%s Alias:%s \n", prompt, var->aliasname);
+    hat_log("%s Alias:%s \n", prompt, var->aliasname);
 }
 
 static void ShowNodRangeVar(PNode n, char *prompt, int level)
@@ -327,15 +340,15 @@ static void ShowNodRangeVar(PNode n, char *prompt, int level)
     PRangeVar var = (PRangeVar)n;
 
     ShowBlank(level);
-    log("{  RangeVar begin \n");
+    hat_log("{  RangeVar begin \n");
 
     ShowBlank(level+1);
-    log("relname:%s \n", var->relname);
+    hat_log("relname:%s \n", var->relname);
 
     ShowNode((PNode)var->alias, prompt, level+1);
 
     ShowBlank(level);
-    log("}  RangeVar end");
+    hat_log("}  RangeVar end \n");
 }
 
 static void ShowNodQuery(PNode n, char *prompt, int level)
@@ -343,20 +356,21 @@ static void ShowNodQuery(PNode n, char *prompt, int level)
     PQuery var = (PQuery)n;
 
     ShowBlank(level);
-    log("{  Query begin \n");
+    hat_log("{  Query begin \n");
 
     ShowBlank(level+1);
-    log("commandType:%d \n", var->commandType);
+    hat_log("commandType:%d \n", var->commandType);
 
     ShowBlank(level+1);
-    log("queryId:%d \n", var->queryId);    
+    hat_log("queryId:%d \n", var->queryId);    
 
     TravelListCell((PList)var->targetList, "targetList", level+1);
     TravelListCell((PList)var->rtable, "rtable", level+1);
     TravelListCell((PList)var->joinTree, "joinTree", level+1);
+    TravelListCell((PList)var->rtjoinTree, "rtjoinTree", level+1);
 
     ShowBlank(level);
-    log("}  Query end\n");
+    hat_log("}  Query end\n");
 }
 
 static void ShowNodRangTbl(PNode n, char *prompt, int level)
@@ -364,22 +378,22 @@ static void ShowNodRangTbl(PNode n, char *prompt, int level)
     PRangTblEntry var = (PRangTblEntry)n;
 
     ShowBlank(level);
-    log("{  T_RangTblEntry begin \n");
+    hat_log("{  T_RangTblEntry begin \n");
 
     ShowBlank(level+1);
-    log("rindex:%d \n", var->rindex);
+    hat_log("rindex:%d \n", var->rindex);
 
     ShowBlank(level+1);
-    log("relkind:%d \n", var->relkind);
+    hat_log("relkind:%d \n", var->relkind);
 
     ShowBlank(level+1);
-    log("isScaned:%d \n", var->isScaned);    
+    hat_log("isScaned:%d \n", var->isScaned);    
     
     TravelListCell((PList)var->targetList, "targetList", level+1);
     TravelListCell((PList)var->ValueList, "ValueList", level+1);
 
     ShowBlank(level);
-    log("}  T_RangTblEntry end \n");
+    hat_log("}  T_RangTblEntry end \n");
 }
 
 static void ShowNodJoin(PNode n, char *prompt, int level)
@@ -387,22 +401,22 @@ static void ShowNodJoin(PNode n, char *prompt, int level)
     PJoinEntry var = (PJoinEntry)n;
 
     ShowBlank(level);
-    log("{  T_JoinEntry begin \n");
+    hat_log("{  T_JoinEntry begin \n");
 
     ShowBlank(level+1);
-    log("rindex:%d \n", var->rindex);
+    hat_log("rindex:%d \n", var->rindex);
     ShowBlank(level+1);
-    log("isJoin:%d \n", var->isJoin);
+    hat_log("isJoin:%d \n", var->isJoin);
 
     ShowBlank(level+1);
-    log("joinOp:%d \n", var->joinOp);
+    hat_log("joinOp:%d \n", var->joinOp);
 
     TravelListCell((PList)var->targetList, "targetList", level+1);
     ShowNode((PNode)var->lefttree, "lefttree", level+1);
     ShowNode((PNode)var->righttree, "righttree", level+1);
 
     ShowBlank(level);
-    log("}  T_JoinEntry end \n");
+    hat_log("}  T_JoinEntry end \n");
 }
 
 static void ShowNodMerger(PNode n, char *prompt, int level)
@@ -410,15 +424,15 @@ static void ShowNodMerger(PNode n, char *prompt, int level)
     PMergerEntry var = (PMergerEntry)n;
 
     ShowBlank(level);
-    log("{  %s T_MergerEntry begin \n", prompt);
+    hat_log("{  %s T_MergerEntry begin \n", prompt);
 
     ShowBlank(level+1);
-    log("rindex:%d \n", var->rindex);
+    hat_log("rindex:%d \n", var->rindex);
     ShowBlank(level+1);
-    log("isJoin:%d \n", var->isJoin);
+    hat_log("isJoin:%d \n", var->isJoin);
 
     ShowBlank(level+1);
-    log("mergeType:%d \n", var->mergeType);
+    hat_log("mergeType:%d \n", var->mergeType);
 
     TravelListCell((PList)var->targetList, "targetList", level+1);
 
@@ -427,7 +441,7 @@ static void ShowNodMerger(PNode n, char *prompt, int level)
     ShowNode((PNode)var->righttree, "righttree", level+1);
 
     ShowBlank(level);
-    log("} %s T_MergerEntry end \n", prompt);
+    hat_log("} %s T_MergerEntry end \n", prompt);
 }
 
 static void ShowNodExprEntry(PNode n, char *prompt, int level)
@@ -435,19 +449,27 @@ static void ShowNodExprEntry(PNode n, char *prompt, int level)
     PExprEntry var = (PExprEntry)n;
 
     ShowBlank(level);
-    log("{  T_ExprEntry begin \n");
+    hat_log("{ %s T_ExprEntry begin \n", prompt);
 
     ShowBlank(level+1);
-    log("rindex:%d \n", var->rindex);
+    hat_log("rindex:%d \n", var->rindex);
+    
     ShowBlank(level+1);
-    log("op:%d \n", var->op);
+    hat_log("rtNum:%d \n", var->rtNum);
+
+    ShowBlank(level+1);
+    hat_log("op:%d \n", var->op);
+
+    ShowBlank(level+1);
+    hat_log("rrindex:%d \n", var->rrindex);
+
 
     TravelListCell((PList)var->targetList, "targetList", level+1);
     ShowNode((PNode)var->lefttree, "lefttree", level+1);
     ShowNode((PNode)var->righttree, "righttree", level+1);
 
     ShowBlank(level);
-    log("}  T_ExprEntry end \n");
+    hat_log("}  %s T_ExprEntry end \n", prompt);
 }
 
 
@@ -456,15 +478,15 @@ static void ShowNodTargetEntry(PNode n, char *prompt, int level)
     PTargetEntry var = (PTargetEntry)n;
 
     ShowBlank(level);
-    log("{  T_TargetEntry begin \n");
+    hat_log("{  T_TargetEntry begin \n");
 
     ShowBlank(level+1);
-    log("rindex:%d \n", var->rindex);
+    hat_log("rindex:%d \n", var->rindex);
 
     ShowNode((PNode)var->colRef, "colRef", level+1);
 
     ShowBlank(level);
-    log("}  T_TargetEntry end \n");
+    hat_log("}  T_TargetEntry end \n");
 }
 
 static void ShowNodPlan(PNode n, char *prompt, int level)
@@ -472,19 +494,19 @@ static void ShowNodPlan(PNode n, char *prompt, int level)
     PPlan var = (PPlan)n;
 
     ShowBlank(level);
-    log("{  T_Plan begin \n");
+    hat_log("{  T_Plan begin \n");
 
     ShowBlank(level+1);
-    log("commandType:%d \n", var->commandType);
+    hat_log("commandType:%d \n", var->commandType);
 
     ShowBlank(level+1);
-    log("commandType:%d \n", var->planLevel);
+    hat_log("planLevel:%d \n", var->planLevel);
 
     ShowNode((PNode)var->leftplan, "leftplan", level+1);
     ShowNode((PNode)var->rightplan, "rightplan", level+1);
 
     ShowBlank(level);
-    log("}  T_Plan end \n");
+    hat_log("}  T_Plan end \n");
 }
 
 static void ShowNodNestLoop(PNode n, char *prompt, int level)
@@ -492,13 +514,13 @@ static void ShowNodNestLoop(PNode n, char *prompt, int level)
     PNestLoop var = (PNestLoop)n;
 
     ShowBlank(level);
-    log("{ %s T_NestLoop begin \n", prompt);
+    hat_log("{ %s T_NestLoop begin \n", prompt);
 
     ShowBlank(level+1);
-    log("isJoin:%d \n", var->isJoin);
+    hat_log("isJoin:%d \n", var->isJoin);
 
     ShowBlank(level+1);
-    log("mergeType:%d \n", var->mergeType);
+    hat_log("mergeType:%d \n", var->mergeType);
 
     ShowNode((PNode)var->leftplan, "leftplan", level+1);
     ShowNode((PNode)var->rightplan, "rightplan", level+1);
@@ -507,7 +529,7 @@ static void ShowNodNestLoop(PNode n, char *prompt, int level)
     ShowNode((PNode)var->targetList, "targetList", level+1);
 
     ShowBlank(level);
-    log("} %s T_NestLoop end \n", prompt);
+    hat_log("} %s T_NestLoop end \n", prompt);
 }
 
 static void ShowNodSeqScan(PNode n, char *prompt, int level)
@@ -515,7 +537,7 @@ static void ShowNodSeqScan(PNode n, char *prompt, int level)
     PSeqScan var = (PSeqScan)n;
 
     ShowBlank(level);
-    log("{ %s T_SeqScan begin \n", prompt);
+    hat_log("{ %s T_SeqScan begin \n", prompt);
 
     ShowNode((PNode)var->rangTbl, "rangTbl", level+1);
     ShowNode((PNode)var->expr, "expr", level+1);
@@ -523,7 +545,7 @@ static void ShowNodSeqScan(PNode n, char *prompt, int level)
     ShowNode((PNode)var->targetList, "targetList", level+1);
 
     ShowBlank(level);
-    log("} %s  T_SeqScan end \n", prompt);
+    hat_log("} %s  T_SeqScan end \n", prompt);
 }
 
 static void ShowNodValueScan(PNode n, char *prompt, int level)
@@ -531,7 +553,7 @@ static void ShowNodValueScan(PNode n, char *prompt, int level)
     PValueScan var = (PValueScan)n;
 
     ShowBlank(level);
-    log("{ %s T_ValueScan begin \n", prompt);
+    hat_log("{ %s T_ValueScan begin \n", prompt);
 
     ShowNode((PNode)var->rangTbl, "rangTbl", level+1);
 
@@ -540,7 +562,7 @@ static void ShowNodValueScan(PNode n, char *prompt, int level)
     ShowNode((PNode)var->targetList, "targetList", level+1);
 
     ShowBlank(level);
-    log("} %s  T_ValueScan end \n", prompt);
+    hat_log("} %s  T_ValueScan end \n", prompt);
 }
 
 static void ShowNodModifyTbl(PNode n, char *prompt, int level)
@@ -548,7 +570,7 @@ static void ShowNodModifyTbl(PNode n, char *prompt, int level)
     PModifyTbl var = (PModifyTbl)n;
 
     ShowBlank(level);
-    log("{ %s T_ModifyTbl begin \n", prompt);
+    hat_log("{ %s T_ModifyTbl begin \n", prompt);
 
     ShowNode((PNode)var->leftplan, "leftplan", level+1);
     ShowNode((PNode)var->rightplan, "rightplan", level+1);
@@ -556,7 +578,7 @@ static void ShowNodModifyTbl(PNode n, char *prompt, int level)
     ShowNode((PNode)var->rangTbl, "rangTbl", level+1);
 
     ShowBlank(level);
-    log("} %s T_ModifyTbl end \n", prompt);
+    hat_log("} %s T_ModifyTbl end \n", prompt);
 }
 
 static void ShowNodProjectTbl(PNode n, char *prompt, int level)
@@ -564,7 +586,7 @@ static void ShowNodProjectTbl(PNode n, char *prompt, int level)
     PProjectTbl var = (PProjectTbl)n;
 
     ShowBlank(level);
-    log("{ %s T_ProjectTbl begin \n", prompt);
+    hat_log("{ %s T_ProjectTbl begin \n", prompt);
 
     ShowNode((PNode)var->subplan, "subplan", level+1);
 
@@ -573,7 +595,7 @@ static void ShowNodProjectTbl(PNode n, char *prompt, int level)
     ShowNode((PNode)var->targetList, "targetList", level+1);
 
     ShowBlank(level);
-    log("} %s T_ProjectTbl end \n", prompt);
+    hat_log("} %s T_ProjectTbl end \n", prompt);
 }
 
 static void ShowNodQueryTbl(PNode n, char *prompt, int level)
@@ -581,7 +603,7 @@ static void ShowNodQueryTbl(PNode n, char *prompt, int level)
     PQueryTbl var = (PQueryTbl)n;
 
     ShowBlank(level);
-    log("{ %s T_QueryTbl begin \n", prompt);
+    hat_log("{ %s T_QueryTbl begin \n", prompt);
 
     ShowNode((PNode)var->subplan, "subplan", level+1);
 
@@ -590,7 +612,26 @@ static void ShowNodQueryTbl(PNode n, char *prompt, int level)
     ShowNode((PNode)var->targetList, "targetList", level+1);
 
     ShowBlank(level);
-    log("} %s T_QueryTbl end \n", prompt);
+    hat_log("} %s T_QueryTbl end \n", prompt);
+}
+
+static void ShowSelectResult(PNode n, char *prompt, int level)
+{
+    PSelectResult var = (PSelectResult)n;
+
+    ShowBlank(level);
+    hat_log("{ %s T_SelectResult begin \n", prompt);
+
+    ShowNode((PNode)var->subplan, "subplan", level+1);
+    
+    ShowNode((PNode)var->qual, "qual", level+1);
+
+    ShowNode((PNode)var->rtable, "rtable", level+1);
+
+    ShowNode((PNode)var->targetList, "targetList", level+1);
+
+    ShowBlank(level);
+    hat_log("} %s T_SelectResult end \n", prompt);
 }
 
 
@@ -604,7 +645,7 @@ static void ShowNode(PNode n, char *prompt, int level)
     if(NULL == n)
     {
         ShowBlank(level);
-        log("%s NULL\n", prompt);
+        hat_log("%s NULL\n", prompt);
         return;
     }
 
@@ -706,14 +747,16 @@ static void ShowNode(PNode n, char *prompt, int level)
         case T_ProjectTbl:
             ShowNodProjectTbl(n, prompt, level);
         break;
-
         case T_QueryTbl:
             ShowNodQueryTbl(n, prompt, level);
+        break;
+        case T_SelectResult:
+            ShowSelectResult(n, prompt, level);
         break;
         
         default:
             ShowBlank(level);
-            log("%s show proc not define, type is [%d]. \n", prompt, n->type);
+            hat_log("%s show proc not define, type is [%d]. \n", prompt, n->type);
         break;
     }
 }
@@ -726,21 +769,21 @@ static void TravelListCell(PList list, char *prompt, int level)
     if(NULL == l)
     {
         ShowBlank(level);
-        log("%s NULL tree\n", prompt);
+        hat_log("%s NULL tree\n", prompt);
         return;
     }
 
     if(level == 1)
     {
-        log("{ %s  \n", prompt);
+        hat_log("{ %s  \n", prompt);
     }
 
     /* list node show */
     ShowBlank(level);
-    log("{ begin %s T_List Node \n", prompt);
+    hat_log("{ begin %s T_List Node \n", prompt);
 
     ShowBlank(level+1);
-    log("length:%d \n", l->length);
+    hat_log("length:%d \n", l->length);
 
     /* list cell node show */
     for(tmpCell = l->head; tmpCell != NULL; tmpCell = tmpCell->next)
@@ -760,13 +803,13 @@ static void TravelListCell(PList list, char *prompt, int level)
     }
 
     ShowBlank(level);
-    log("}  %s T_List end \n", prompt);
+    hat_log("}  %s T_List end \n", prompt);
 
     if(level == 1)
     {
         if(level == 1)
         {
-            log("} %s  \n", prompt);
+            hat_log("} %s  \n", prompt);
         }
     }
     return;

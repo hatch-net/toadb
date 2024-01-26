@@ -1,6 +1,15 @@
 /*
  *	toadb toadmain 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
 #include <stdio.h>
@@ -21,12 +30,15 @@
 #include "query.h"
 #include "plan.h"
 #include "memStack.h"
+#include "config_pub.h"
 
-#define log printf
+#define hat_log printf
 
-#define PARSER_TREE_PRINT 1
+// #define PARSER_TREE_PRINT 1
 
 char *DataDir = "./toadbtest";
+
+PMemContextNode dictionaryContext = NULL;
 
 /* 
  * toadb数据库服务入口，进行SQL解析，执行 
@@ -50,7 +62,7 @@ int toadbMain(int argc, char *argv[])
     ShowToadbInfo();
     if(checkDataDir() < 0)
     {
-        log("Data directory is invalid.\n");
+        hat_log("Data directory is invalid.\n");
 
         return -1;
     }
@@ -87,9 +99,9 @@ int ToadMainEntry(char *query)
     List *parserTree = NULL;
     List *queryTree = NULL;
     List *planTree = NULL;
-    PMemContextNode oldContext = NULL;
+    PMemContextNode preContext = NULL, currContext = NULL;
 
-    oldContext = MemMangerNewContext("queryExcutor");
+    preContext = MemMangerNewContext("queryExcutor");
 
     /* 对输入的SQL进行词法和语法解析，生成解析树 */
     parserTree = raw_parser(query);
@@ -131,16 +143,24 @@ int ToadMainEntry(char *query)
     /* 释放解析树占用的内存资源 */
     ReleaseParserTreeResource(parserTree);
     
-    oldContext = MemMangerSwitchContext(oldContext);
-    //MemMangerDeleteContext(oldContext);
+    /* relese memory context */
+    currContext = MemMangerSwitchContext(preContext);
+    MemMangerDeleteContext(preContext, currContext);
 
     return 0;
 }
 
 int InitToad()
 {
+    PMemContextNode oldContext = NULL;
     
-    MemMangerInit();
+    /* Memory Context Manager Initialize at the head. */
+    MemMangerInit(); 
+
+    /* initialize dictionary memory context. */
+    oldContext = MemMangerNewContext("dictionaryTop");
+    dictionaryContext = MemMangerSwitchContext(oldContext);
+
     return 0;
 }
 
@@ -158,7 +178,7 @@ int checkDataDir()
     // 检查文件是否存在
     if (access(DataDir, F_OK) != 0) 
     {
-        // log("table file %s is not exist. \n", filepath);
+        // hat_log("table file %s is not exist. \n", filepath);
         return -1;
     }
 
@@ -211,7 +231,7 @@ void ShowToadbInfo()
     
     /* current director path */
     cwd = getcwd(NULL, 0);
-    printf("cwd :%s\n", cwd);
+    // printf("cwd :%s\n", cwd);
     free(cwd);
 
     /* Datadir */

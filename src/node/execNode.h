@@ -1,6 +1,15 @@
 /*
  *	toadb execNode 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
 
@@ -41,7 +50,7 @@ typedef struct NestLoopState
 
     PNode       left;
     PNode       right;
-    PNode       outResultRow;
+    PNode       outResultRow;       /* left查询结果，实际为rowdata指针，这里为了不引用，转为PNode类型 */
     int         outerNeedNew;
     int         outerIsEnd;
     int         innerNeedNew;
@@ -89,5 +98,16 @@ typedef struct QueryTblState
 
     PScanState scanState;
 }QueryTblState, *PQueryTblState;
+
+typedef struct SelectState
+{
+    PlanStateNode stateNode;
+
+    PNode       subplanState;
+
+    PScanState scanState;
+    PNode       resultRow;       /* left查询结果，实际为rowdata指针，这里为了不引用，转为PNode类型 */
+    PList       rtable;
+}SelectState, *PSelectState;
 
 #endif

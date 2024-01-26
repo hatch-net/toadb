@@ -1,12 +1,24 @@
 /*
- *	toadb buffer 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
+ * 
+ * toadb buffer 
+ * 
 */
 
 #include "buffer.h"
 #include "exectable.h"
 #include "tfile.h"
 #include "scan.h"
+#include "server_pub.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,7 +27,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define log printf
+#define hat_log printf
 
 DList* g_TblList = NULL;
 
@@ -30,6 +42,7 @@ PTableList GetTableInfo(char *filename)
     char pagebuffer[PAGE_MAX_SIZE] = {0};
     PPageDataHeader pageheader = (PPageDataHeader)pagebuffer;
     PTableMetaInfo tableinfo = (PTableMetaInfo) (pagebuffer + sizeof(PageDataHeader));
+    PMemContextNode oldContext = NULL;
     PVFVec pos = NULL;
     int size = 0;
 
@@ -37,6 +50,9 @@ PTableList GetTableInfo(char *filename)
     {
         return NULL;
     }
+
+    /* MemoryContext switch to Database dictionary memory context. */
+    oldContext = MemMangerSwitchContext(dictionaryContext);
 
     do
     {
@@ -52,8 +68,11 @@ PTableList GetTableInfo(char *filename)
     }while(0);
 
     if(NULL != thisTbl && thisTbl->tbl_fd != 0)
+    {
+        MemMangerSwitchContext(oldContext);
         return thisTbl;
-        
+    }
+
     /* table info is not find, or table file is not opened. */
     if(NULL == thisTbl)
     {
@@ -72,7 +91,9 @@ PTableList GetTableInfo(char *filename)
 
     if(NULL == pos)
     {
-        log("table %s is not found, maybe create table first.\n", filename);
+        hat_log("table %s is not found, maybe create table first.\n", filename);
+
+        MemMangerSwitchContext(oldContext);
         return NULL;
     }
     thisTbl->tbl_fd = pos->fd;
@@ -112,6 +133,9 @@ PTableList GetTableInfo(char *filename)
 
     /* load group metadata info */
     TableOpen(thisTbl, GROUP_FORK);
+
+    MemMangerSwitchContext(oldContext);
+
     return thisTbl;
 }
 
@@ -233,7 +257,7 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
         attrData = GetDataByIndex(attrIndex, stmt->valuesList);
         if(attrData == NULL)
         {
-            log("attr and values is not match. \n");
+            hat_log("attr and values is not match. \n");
             /* TODO resource release. */
             for(int i = 0; i < tblMeta->colNum; i++)
             {
@@ -303,7 +327,7 @@ PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt)
                 rawRows->columnData[index]->data[0] = attrData->value.iData != 0?'T':'F';
                 break;
             default:
-                log("attr and values type is not match. \n");
+                hat_log("attr and values type is not match. \n");
                 /* TODO resource release. */
                 return rawRows;
         }
@@ -356,7 +380,7 @@ PTableRowData DeFormRowData(PPageDataHeader page, int pageffset)
         {
             FreeMem(rawRows);
             rawRows = NULL;
-            log("found bad tuple size %d\n", size);
+            hat_log("found bad tuple size %d\n", size);
             break;
         }
         /* data is null */
@@ -382,7 +406,7 @@ PPageDataHeader GetSpacePage(PTableList tblInfo, int size, PageOp op, ForkType f
 
     if(size + PAGE_DATA_HEADER_SIZE >= PAGE_MAX_SIZE)
     {
-        log("row data size %d is oversize page size %d\n", size, PAGE_MAX_SIZE);
+        hat_log("row data size %d is oversize page size %d\n", size, PAGE_MAX_SIZE);
         return page;
     }
 
@@ -468,7 +492,7 @@ int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row)
 
     if(writeSize != PAGE_MAX_SIZE)
     {
-        log("write page falure. real size %d is writed into page index %d.\n", writeSize, page->header.pageNum);
+        hat_log("write page falure. real size %d is writed into page index %d.\n", writeSize, page->header.pageNum);
     }
 
     /* end resource release here. */
@@ -562,7 +586,7 @@ PPageDataHeader ExtensionTbl(PTableList tblInfo, int num, ForkType forkNum)
 
     if(num <= 0 || num > PAGE_EXTENSION_MAX_NUM)
     {
-        log("num will be extension is invalid.\n");
+        hat_log("num will be extension is invalid.\n");
         return NULL;
     }
 
@@ -693,7 +717,7 @@ PGroupItemData FindGroupInfo(PTableList tblInfo, int groupId)
 
     if(NULL == tblInfo || groupId == INVALID_GROUP_ID)
     {
-        log("invalid parameters \n");
+        hat_log("invalid parameters \n");
         return NULL;
     }
 
@@ -768,7 +792,7 @@ PGroupItemData GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo)
 
     if(NULL == tblInfo)
     {
-        log("invalid parameters \n");
+        hat_log("invalid parameters \n");
         return NULL;
     }
 
@@ -881,7 +905,7 @@ int GetSpaceGroupPage(PTableList tblInfo, PTableRowData insertdata, PageOp op, P
 
     if((NULL == tblInfo) || (NULL == insertdata) || (NULL == pageList))
     {
-        log("invalid parameters \n");
+        hat_log("invalid parameters \n");
         return -1;
     }
 
@@ -898,7 +922,7 @@ int GetSpaceGroupPage(PTableList tblInfo, PTableRowData insertdata, PageOp op, P
         /* check free space */
        /* if(GetGroupMemberNum(groupItem) != insertdata->num)
         {
-            log("insert num%d, group metadata member num %d is not equal. \n", insertdata->num, colNum);
+            hat_log("insert num%d, group metadata member num %d is not equal. \n", insertdata->num, colNum);
             break;
         }
         */
@@ -1055,7 +1079,7 @@ PPageDataHeader* GetGroupMemberPages(PTableList tblInfo, PGroupItemData item, in
         /* error ocur */
         pageIndex = ReleasePageList(pagelist, memberData->memNum);
 
-        log("group page invalid. groupmember[%d], pagefind[%d-%d]\n", memberData->memNum, subPageNum, pageIndex);
+        hat_log("group page invalid. groupmember[%d], pagefind[%d-%d]\n", memberData->memNum, subPageNum, pageIndex);
     }
 
     return pagelist;
@@ -1129,7 +1153,7 @@ PPageDataHeader* GetGroupMemberPagesOpt(PTableList tblInfo, PScanPageInfo scanPa
         pageIndex = ReleasePageList(pagelist, memberData->memNum);
         pagelist = NULL;
 
-        log("group page invalid. groupmember[%d], pagefind[%d-%d]\n", memberData->memNum, subPageNum, pageIndex);
+        hat_log("group page invalid. groupmember[%d], pagefind[%d-%d]\n", memberData->memNum, subPageNum, pageIndex);
     }
 
 END:
@@ -1195,7 +1219,7 @@ PTableRowData FormColRowsData(PTableRowData insertdata)
 
     if(NULL == insertdata && (insertdata->num <= 0))
     {
-        log("col rows form invalid parameters. \n");
+        hat_log("col rows form invalid parameters. \n");
         return NULL;
     }
     
@@ -1221,7 +1245,7 @@ PTableRowData FormColData2RowData(PRowColumnData colRows)
 
     if(NULL == colRows)
     {
-        log("coldata to rowdata invliad argments\n");
+        hat_log("coldata to rowdata invliad argments\n");
         return NULL;
     }
 
@@ -1242,7 +1266,7 @@ PTableRowData FormCol2RowData(PTableRowData *colRows, int colNum)
 
     if(NULL == colRows || NULL == colRows[0])
     {
-        log("colrow to rowdata invliad argments\n");
+        hat_log("colrow to rowdata invliad argments\n");
         return NULL;
     }
 
@@ -1288,7 +1312,7 @@ int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num)
     pageno = lastpage->header.pageNum - num + 1;
     if(pageno <= PAGE_HEAD_PAGE_NUM)
     {
-        log("page number is not enough. realnum:%d , request:%d \n",lastpage->header.pageNum, num);
+        hat_log("page number is not enough. realnum:%d , request:%d \n",lastpage->header.pageNum, num);
         FreeMem(groupItemData);
         return -1;
     }
@@ -1395,7 +1419,7 @@ PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo)
 
     if(NULL == tblInfo || NULL == searchInfo)
     {
-        log("invalid parameters \n");
+        hat_log("invalid parameters \n");
         return NULL;
     }
 
@@ -1444,7 +1468,7 @@ PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int p
 
     if(NULL == tblInfo)
     {
-        log("invalid parameters \n");
+        hat_log("invalid parameters \n");
         return NULL;
     }
 

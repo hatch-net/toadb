@@ -13,9 +13,7 @@ PNode ExecInitNestLoopNode(PExecState eState);
 
 PTableRowData ExecNestLoopNode(PExecState eState);
 
-PTableRowData ExecBoolExpreNode(PExecState eState);
-
-PTableRowData ExecJoinExpreNode(PExecState eState);
+PTableRowData ExecNestLoopScan(PExecState eState);
 
 PTableRowData ReScanNestLoopNode(PExecState eState);
 

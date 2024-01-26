@@ -48,7 +48,7 @@ typedef struct TableRowData
 }TableRowData, *PTableRowData;
 
 #define MIN_ROW_SIZE (sizeof(TableRowData)+sizeof(RowColumnData))
-
+#define MIN_DATA_SIZE (sizeof(RowColumnData))
 
 
 #pragma pop(pack(1))

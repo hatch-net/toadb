@@ -17,7 +17,7 @@
 #include <fcntl.h>           /* Definition of AT_* constants */
 
 
-#define log printf 
+#define hat_log printf 
 #define debug  
 
 /* configure param */
@@ -36,7 +36,7 @@ int CreateTableFile(char *filename, int mode)
     // 检查文件是否存在
     if (access(filepath, F_OK) == 0) 
     {
-        log("table file %s already exist. err[%d]\n", filepath, errno); 
+        hat_log("table file %s already exist. err[%d]\n", filepath, errno); 
         return -1;
     }
 
@@ -44,7 +44,7 @@ int CreateTableFile(char *filename, int mode)
     fd = open(filepath, O_RDWR | O_CREAT, mode);
     if (fd == -1) 
     {
-        log("create file %s error, maybe space not enough.errno[%d]\n", filepath, errno);
+        hat_log("create file %s error, maybe space not enough.errno[%d]\n", filepath, errno);
         return -2;
     }
 
@@ -63,7 +63,7 @@ int OpenTableFile(char *filename, int mode)
     // 检查文件是否存在
     if (access(filepath, F_OK) != 0) 
     {
-        // log("table file %s is not exist. \n", filepath);
+        // hat_log("table file %s is not exist. \n", filepath);
         err = errno;
         return -1 * err;
     }
@@ -72,7 +72,7 @@ int OpenTableFile(char *filename, int mode)
     fd = open(filepath, O_RDWR, mode);
     if (fd == -1) 
     {
-        log("open file %s error, errno[%d]\n", filepath, errno);
+        hat_log("open file %s error, errno[%d]\n", filepath, errno);
         return -2;
     }
 
@@ -89,7 +89,7 @@ int DeleteTableFile(char *filename)
     // 检查文件是否存在
     if (access(filepath, F_OK) != 0) 
     {
-        log("table file %s is not exist. \n", filepath);
+        hat_log("table file %s is not exist. \n", filepath);
         return -1;
     }
 
@@ -97,7 +97,7 @@ int DeleteTableFile(char *filename)
     ret = unlink(filepath);
     if (ret != 0) 
     {
-        log("unlink file %s ,errno %d \n", filepath, errno);
+        hat_log("unlink file %s ,errno %d \n", filepath, errno);
         return -1;
     }
 
@@ -115,7 +115,7 @@ int smgrFlush(int fd, char *buffer, int offnum)
 
     if(fd <= 0)
     {
-        log("table file not open\n");
+        hat_log("table file not open\n");
         return -1;
     }
 
@@ -287,7 +287,7 @@ PVFVec smgr_open(PsgmrInfo smgrInfo, char *fileName, ForkType forkNum)
     vpos->fd = OpenTableFile(fname, 0666);
     if(vpos->fd < 0)
     {
-        // log("open file %s failure.\n", fname);
+        // hat_log("open file %s failure.\n", fname);
         FreeMem(vpos);
         return NULL;
     }
@@ -305,7 +305,7 @@ PPageHeader smgr_read(PVFVec vfInfo, PPageOffset pageOffset)
     page = (PPageHeader)smgrReadPage(vfInfo->fd, offset, PAGE_MAX_SIZE);
     if(NULL == page)
     {
-        //log("read page %d-%d failure.\n", offset, PAGE_MAX_SIZE);
+        //hat_log("read page %d-%d failure.\n", offset, PAGE_MAX_SIZE);
         return NULL;
     }
 
@@ -333,7 +333,7 @@ int smgr_create(char *fileName, ForkType forkNum)
     fd = CreateTableFile(fname, 0666);
     if(fd < 0)
     {
-        log("create file %s failure.\n", fname);
+        hat_log("create file %s failure.\n", fname);
     }
 
     return fd;
@@ -350,7 +350,7 @@ int smgr_write(PVFVec vfInfo, PPageOffset pageOffset, PPageHeader page)
     writeSize = write(vfInfo->fd, (char *)page, PAGE_MAX_SIZE);
     if (writeSize != PAGE_MAX_SIZE)
     {
-        log("table is extened failure, maybe is not enough space.\n");
+        hat_log("table is extened failure, maybe is not enough space.\n");
         return -1;
     }
 
