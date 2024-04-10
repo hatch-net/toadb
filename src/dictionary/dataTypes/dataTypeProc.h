@@ -20,7 +20,7 @@
 #include "parserNode.h"
 
 
-typedef HAT_BOOL (*Operator)(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+typedef PExprDataInfo (*Operator)(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
 typedef int (*Operator1)(PExprDataInfo value);
 
 #define DATATYPEPROC_VERSION    (0x3A01)

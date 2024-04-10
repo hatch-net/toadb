@@ -31,6 +31,12 @@ static PList TargetRewriteAllColumns(PList targetList, PQueryState queryState);
 static PList TargetRewriteAllColumnsOneRte(PList targetList, PRangTblEntry rte);
 static PNode SearchColumDef(PNode colRef, PList rangTbl, PColumnDefInfo *colDef);
 
+static PNode SimpleExprNodeProcess(PNode node, PQueryState queryState);
+static PList SubExprNodeTargetProcess(PNode node, PQueryState queryState);
+static void AddRangTblTargetEntry(PTargetEntry target, PRangTblEntry rte);
+static PTargetEntry QueryRangTblTarget(PList targetList, char *colName);
+PList MergetTargetList(PList target1, PList target2);
+
 /* 
  * analyze and rewrite, transform parser tree to query tree.
  */
@@ -106,6 +112,9 @@ PQuery transformStmt(PNode parserTree)
         case T_InsertStmt:
             query = transformInsertStmt((PInsertStmt)parserTree);
             break;
+        case T_UpdateStmt:
+            query = transformUpdateStmt((PUpdateStmt)parserTree);
+            break;
         case T_CreateStmt:
         case T_DropStmt:
             query = transformUtilityStmt(parserTree);
@@ -142,18 +151,19 @@ PQuery transformSelectStmt(PSelectStmt selectStmt)
     queryState->querylevel = 1;
     queryState->isJoin = 0;
     queryState->processState = 0;
+    queryState->rindex = FIRST_RANGTABLE_INDEX;
 
     /* collect rang table infomation */
     selectQuery->rtable = NULL;
     queryState->qualTargetList = NULL;  /* 条件表达式中需要的属性列 */
 
     if(NULL != selectStmt->fromList)
-        selectQuery->rtable = RangTblRewriteFromClause(selectStmt->fromList);
+        selectQuery->rtable = RangTblRewriteFromClause(queryState, selectStmt->fromList);
 
     if(NULL == selectQuery->rtable)
     {
         /* TODO: 暂时不支持 “select 表达式; ” 类似语法 */
-        hat_error("not support that rtable is null.");
+        hat_error("not support that rtable is null.\n");
         return NULL;
     }
 
@@ -204,13 +214,13 @@ PQuery transformSelectStmt(PSelectStmt selectStmt)
  * 生成基本表列表
  * 检查基本表信息，并进行编号，以便后面引用 
  */
-PList RangTblRewriteFromClause(PList fromList)
+PList RangTblRewriteFromClause(PQueryState queryState, PList fromList)
 {
     PListCell tmpCell = NULL;
     PTableList tblInfo = NULL;
     PList rangTblList = NULL;
     PRangTblEntry rangEntry = NULL;
-    int rindex = 1;
+    int rindex = queryState->rindex;
 
     rangTblList = NewNode(List);
 
@@ -240,6 +250,7 @@ PList RangTblRewriteFromClause(PList fromList)
         rangTblList = AppendNode(rangTblList, (PNode)rangEntry);
     }
 
+    queryState->rindex = rindex;
     return rangTblList;
 }
 
@@ -299,7 +310,7 @@ PNode MergerNodeProcess(PNode node, PQueryState queryState)
     mergerNode->targetList = queryState->qualTargetList;
 
     /* restore parent targetlist */
-    queryState->qualTargetList = MergeList(queryState->qualTargetList, qualTargetList);
+    queryState->qualTargetList = MergeList(qualTargetList, queryState->qualTargetList);
 
     return (PNode)mergerNode;
 }
@@ -322,12 +333,59 @@ PNode QualNodeProcess(PNode node, PQueryState queryState)
                 valueNode = ExprNodeProcess(node, queryState);
             break;
         default:
-            valueNode = NULL;
+            /* as is */
+            valueNode = node;
             break;        
     }
 
     return valueNode;
 }
+
+/*
+ * 表达式处理，对于嵌套表达式递归调用
+ */
+PNode ExprNodeProcess(PNode node, PQueryState queryState)
+{
+    PA_Expr exprNode = (PA_Expr)node;
+    PNode leftExpr = NULL, rightExpr = NULL;
+    PExprEntry commExprNode = NULL;
+
+    /* left or right is NULL, entire expression is null. */
+    if((NULL == exprNode->lexpr) || (NULL == exprNode->rexpr))
+    {
+        return NULL;
+    }
+
+    /* left expre process */
+    if((T_ColumnRef != exprNode->lexpr->type) && (T_ConstValue != exprNode->lexpr->type))
+    {
+        leftExpr = QualNodeProcess(exprNode->lexpr, queryState);
+    }
+    else
+    {
+        leftExpr = exprNode->lexpr;
+    }
+
+    /* right expre process */
+    if((T_ColumnRef != exprNode->rexpr->type) && (T_ConstValue != exprNode->rexpr->type))
+    {
+        rightExpr = QualNodeProcess(exprNode->rexpr, queryState);
+    }
+    else
+    {
+        rightExpr = exprNode->rexpr;
+    }
+
+    /* common expr */
+    commExprNode = NewNode(ExprEntry);
+    commExprNode->op = exprNode->exprOpType;
+    commExprNode->lefttree = leftExpr;
+    commExprNode->righttree = rightExpr;
+
+    commExprNode = (PExprEntry)SimpleExprNodeProcess((PNode)commExprNode, queryState);
+    return (PNode)commExprNode;;
+}
+
 
 /* 
  * 1.检查表达式中列对应的基本表是否存在，这里会用别名查找；
@@ -336,79 +394,63 @@ PNode QualNodeProcess(PNode node, PQueryState queryState)
  * 这里需要区分表达式中是两表的连接条件，还是只涉及到一张表；
  * 如果涉及两张表时，需要创建joinExpr节点，如果是一张表时，创建Expr节点；
  */
-PNode ExprNodeProcess(PNode node, PQueryState queryState)
+static PNode SimpleExprNodeProcess(PNode node, PQueryState queryState)
 {
-    PA_Expr exprNode = (PA_Expr)node;
-    PNode targetNode = NULL;
+    PList targetList = NULL;
     PList qualTargetList = NULL;
     PExprEntry commExprNode = NULL;
+    PNode tempExpr = NULL;
+    PList oriTargetList = NULL;
     int lrindex = -1, rrindex = -1;
 
-    /* common expr */
-    commExprNode = NewNode(ExprEntry);
-    commExprNode->op = exprNode->exprOpType;
+    commExprNode = (PExprEntry)node;
+    oriTargetList = queryState->qualTargetList;
+    
 
     /* process left and right expr */
-    if((NULL != exprNode->lexpr) && (T_ColumnRef == ((PNode)(exprNode->lexpr))->type))
+    queryState->qualTargetList = NULL;
+    qualTargetList = SubExprNodeTargetProcess(commExprNode->lefttree, queryState);
+    if(NULL != qualTargetList)
     {
-        targetNode = TargetNodeProcess(exprNode->lexpr, queryState);
-
-        if(NULL == targetNode)
-        {
-            hat_error("lexpr column is not found. \n");
-            queryState->processState = -1;
-            return NULL;
-        }
-
-        qualTargetList = AppendNode(qualTargetList, targetNode);
         lrindex = queryState->rindex;
         commExprNode->rtNum++;
     }
 
-    if((NULL != exprNode->rexpr) && (T_ColumnRef == ((PNode)(exprNode->rexpr))->type))
+    queryState->qualTargetList = NULL;
+    targetList = SubExprNodeTargetProcess(commExprNode->righttree, queryState);
+    if(NULL != targetList)
     {
-        targetNode = TargetNodeProcess(exprNode->rexpr, queryState);
-        if(NULL == targetNode)
-        {
-            hat_error("rexpr column is not found. \n");
-            queryState->processState = -1;
-            return NULL;
-        }
-
-        qualTargetList = AppendNode(qualTargetList, targetNode);
+        qualTargetList = MergetTargetList(qualTargetList, targetList);
         rrindex = queryState->rindex;
         commExprNode->rtNum++;
-    }   
+    }  
 
     /* 生成节点 */
     if((lrindex < 0) && (rrindex < 0))
     {
-        /* TODO: double const expr or NULL expr, example :1==2 */
-        hat_error("not support expr!\n");
-        queryState->processState = -1;
-        return NULL;
+        /* TODO: double const expr or NULL expr, example :1==2 
+         * compute result directly
+        */
+        ;
     }
     else if(lrindex < 0)
     {
         /* right is column expr */
-        commExprNode->lefttree = exprNode->rexpr;
-        commExprNode->righttree = exprNode->lexpr;
+        tempExpr = commExprNode->lefttree;
+        commExprNode->lefttree = commExprNode->righttree;
+        commExprNode->righttree = tempExpr;
         commExprNode->rindex = rrindex;
         commExprNode->rtNum = 1;
     }
     else if((rrindex < 0) || (lrindex == rrindex))
     {
         /* left is column expr */
-        commExprNode->lefttree = exprNode->lexpr;
-        commExprNode->righttree = exprNode->rexpr;
         commExprNode->rindex = lrindex;
         commExprNode->rtNum = 1;
     }
     else 
     {
         /* join node */
-        commExprNode->lefttree = exprNode->lexpr;
-        commExprNode->righttree = exprNode->rexpr;
         commExprNode->rindex = lrindex;
         commExprNode->rrindex = rrindex;
         commExprNode->rtNum = 2;
@@ -416,10 +458,44 @@ PNode ExprNodeProcess(PNode node, PQueryState queryState)
 
     commExprNode->targetList = qualTargetList;
 
-    /* 合并各表达式的targetlist */
-    queryState->qualTargetList = MergeList(queryState->qualTargetList, qualTargetList);
+    /* 合并各表达式的targetlist , 这里合并到原始记录的 oritargetlist. */
+    queryState->qualTargetList = MergetTargetList(oriTargetList, qualTargetList);
 
     return (PNode)commExprNode;
+}
+
+/*
+ * 条件表达式中产生的目标列
+ */
+static PList SubExprNodeTargetProcess(PNode node, PQueryState queryState)
+{
+    PNode targetNode = NULL;
+    PList targetList = NULL;
+    
+    if(NULL == node)
+        return NULL;
+
+    switch(node->type)
+    {
+        case T_ColumnRef:
+        targetNode = TargetNodeProcess(node, queryState);
+        if(NULL != targetNode)
+        {
+            targetList = AppendNode(targetList, targetNode);
+        }
+        break;
+
+        case T_ExprEntry:
+        /* target list is added to queryState->qualTargetList */
+        break;
+
+        case T_ConstValue:
+        break;
+
+        default:
+        break;
+    }
+    return targetList;
 }
 
 /* 
@@ -461,11 +537,14 @@ PNode TargetNodeProcess(PNode node, PQueryState queryState)
     rte = (PRangTblEntry)SearchColumDef((PNode)columnRefNode, queryState->rtable, &colDef);
     if(NULL == rte)
     {
+        hat_error("column %s is not found, maybe check first.\n", columnRefNode->field);
+        queryState->processState = -1;
         return NULL;
     }
 
     /* used to client show */
     columnRefNode->vt = colDef->type;
+    columnRefNode->attrIndex = colDef->attrIndex;
 
     /* 最后查询结果的列名，如果没有别名，就以表列名显示 */
     if(resTarget->name == NULL)
@@ -474,11 +553,12 @@ PNode TargetNodeProcess(PNode node, PQueryState queryState)
     target = NewNode(TargetEntry);
     target->colRef = (PNode)resTarget;
     target->rindex = rte->rindex;
+    target->attrIndex = colDef->attrIndex;    
     
     queryState->rindex = target->rindex;
 
     /* 增加target 到基本表上 */
-    rte->targetList = AppendNode(rte->targetList, (PNode)target);
+    AddRangTblTargetEntry(target, rte);
 
     if(queryState->querylevel > 1)
         rte->isScaned = 1;
@@ -486,6 +566,57 @@ PNode TargetNodeProcess(PNode node, PQueryState queryState)
         rte->isNeeded = 1;
 
     return (PNode)target;
+}
+
+/* 
+ * Add one targetEntry to rang table targetList.
+ * maybe already in the list, when this target is ignored.
+ */
+static void AddRangTblTargetEntry(PTargetEntry target, PRangTblEntry rte)
+{
+    PTargetEntry tempTarget = NULL;
+    PResTarget resTarget = NULL;
+
+    if((NULL == target) || (NULL == rte))
+        return ;
+
+    if(NULL != rte->targetList)
+    {
+        /* check repeat */
+        resTarget = (PResTarget)target->colRef;
+        tempTarget = QueryRangTblTarget(rte->targetList, resTarget->name);
+
+        if((NULL != tempTarget) && (tempTarget->rindex == rte->rindex))
+            return ;
+    }
+
+    /* 增加target 到基本表上 */
+    rte->targetList = AppendNode(rte->targetList, (PNode)target);
+}
+
+/* 
+ * query targetEntry by colName.
+ * colName maybe is unique identified, which is colName defined, or it can be alias colName.
+ */
+static PTargetEntry QueryRangTblTarget(PList targetList, char *colName)
+{
+    PListCell tmpCell = NULL;
+    PTargetEntry te = NULL;
+    PResTarget resTarget = NULL;
+
+    if((NULL == targetList) || (NULL == colName))
+        return NULL;
+
+    for(tmpCell = targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        te = (PTargetEntry)GetCellNodeValue(tmpCell);
+        resTarget = (PResTarget)te->colRef;
+        
+        if(hat_strcmp(colName, resTarget->name, NAME_MAX_LEN) == 0)
+            return te;
+    }
+
+    return NULL;
 }
 
 /* 
@@ -497,7 +628,11 @@ PNode TargetNodeProcess(PNode node, PQueryState queryState)
 static PNode SearchColumDef(PNode colRef, PList rangTbl, PColumnDefInfo *colDef)
 {
     PColumnDefInfo col = NULL;
+    PColumnDefInfo firstCol = NULL;
+    
     PRangTblEntry rte = NULL;
+    PRangTblEntry firstRte = NULL;
+
     PRangeVar rangVar = NULL;
     PListCell tmpCell = NULL;
     PColumnRef columnRefNode = (PColumnRef)colRef;
@@ -535,27 +670,24 @@ static PNode SearchColumDef(PNode colRef, PList rangTbl, PColumnDefInfo *colDef)
         /* found */
         if(NULL != col)
         {
-            if(!findAll)
-            {
-                break;
-            }
-
             findCnt++; 
+            firstCol = col;
+            firstRte = rte;
         }
 
         if(findCnt > 1)
         {
             hat_log("column %s ambiguous.\n", columnRefNode->field);
-            col = NULL;
+            firstCol = NULL;
             break;
         }
     }
 
-    if(col == NULL)
+    if(firstCol == NULL)
         return NULL;
     
-    *colDef = col;
-    return (PNode)rte;
+    *colDef = firstCol;
+    return (PNode)firstRte;
 }
 
 PQuery transformUtilityStmt(PNode parser)
@@ -611,7 +743,12 @@ PList ProcessCheckTargetList(PList targetList, PQueryState queryState)
             targetEntryList = NULL;
             break;
         }
-        
+
+        /* case for update set right of =, which will be id = id+1 */
+        if(NULL != resTarget->setValue)
+        {
+            resTarget->setValue = QualNodeProcess(resTarget->setValue, queryState);
+        }
     }
 
     return targetEntryList;
@@ -669,6 +806,7 @@ static PList TargetRewriteAllColumnsOneRte(PList targetList, PRangTblEntry rte)
         target = NewNode(TargetEntry);
         target->colRef = (PNode)resTarget;
         target->rindex = rte->rindex;
+        target->attrIndex = rte->tblInfo->tableDef->column[colNum].attrIndex;
 
         targetList = AppendNode(targetList, (PNode)target);
     }         
@@ -692,7 +830,7 @@ PQuery transformInsertStmt(PInsertStmt insertStmt)
     queryState->querylevel = 1;
     queryState->isJoin = 0;
     queryState->rtable = NULL;
-    queryState->rindex = 0;
+    queryState->rindex = FIRST_RANGTABLE_INDEX;
     queryState->parserTree = (PNode)insertStmt;
 
     /* range table list, which generated by target table of insert stmt. */
@@ -701,7 +839,7 @@ PQuery transformInsertStmt(PInsertStmt insertStmt)
     {
         return NULL;
     }
-    rtableNode->rindex = ++queryState->rindex;    
+    rtableNode->rindex = queryState->rindex++;    
     queryState->rtable = AppendNode(queryState->rtable, (PNode)rtableNode);
 
     /* target list, queryState->parentTargetList is same as targetlist. */
@@ -905,6 +1043,10 @@ static PNode AddNormalTblNode(PRangTblEntry rangTbl, PList targetList)
     return (PNode)expr;
 }
 
+/* 
+ * 生成Scan 树，左二叉树，也就是左侧是树，每层的只有一个右子节点，顶层没有或只有一个右子节点；
+ * 原来的Scan树，会变成后加入节点的子树，也就是后加节点为root；或者当前树的根的右子节点
+ */
 static PNode AddJoinTblNode(PList left, PRangTblEntry rangTbl, PList targetList)
 {
     PNode node = NULL;
@@ -977,4 +1119,132 @@ PList GetTblTargetList(PList targetList, int rindex)
     }
 
     return tblTargetList;
+}
+
+PQuery transformUpdateStmt(PUpdateStmt updateStmt)
+{
+    PQuery query = NULL;
+    PQueryState queryState = NULL;    
+    PRangTblEntry rtableNode = NULL;
+    PRangeVar rangVar = NULL;
+    PList rangTblList = NULL;
+
+    /* create query */
+    query = NewNode(Query);
+    query->commandType = CMD_UPDATE;
+    query->queryId = GetQueryId();
+    
+    queryState = (PQueryState)AllocMem(sizeof(QueryState));
+    queryState->queryId = query->queryId;
+    queryState->querylevel = 1;
+    queryState->isJoin = 0;
+    queryState->rtable = NULL;
+    queryState->rindex = FIRST_RANGTABLE_INDEX;
+    queryState->parserTree = (PNode)updateStmt;
+
+    /* range table list, which generated by target table of update stmt. */
+    if(NULL != updateStmt->fromList)
+        rangTblList = RangTblRewriteFromClause(queryState, updateStmt->fromList);
+    
+    rangVar = (PRangeVar)updateStmt->relation;
+    rtableNode = GetRangTblNode(rangVar->relname);
+    if(NULL == rtableNode)
+    {
+        return NULL;
+    }
+
+    /* 这里主要保留表的别名 */
+    rtableNode->rangVar = (PRangeVar)updateStmt->relation; 
+    if(rangVar->alias != NULL)
+    {
+        /* memory free here up to memory context. */
+        rangVar->relname = ((PAlias)(rangVar->alias))->aliasname;
+    }
+
+    rtableNode->rindex = queryState->rindex++; 
+    
+    /* add result table to the first of rang table list. */
+    queryState->rtable = AppendNode(queryState->rtable, (PNode)rtableNode);
+    queryState->rtable = MergeList(queryState->rtable, rangTblList);
+    query->rtable = queryState->rtable;
+
+    /* 
+     * set value list
+     * targetlist of parent node, 
+     * 将targetEntry与rtable用rindex关联起来, 生成顶层targetlist 
+     */
+    queryState->parentTargetList = ProcessCheckTargetList(updateStmt->targetlist, queryState);
+    query->targetList = queryState->parentTargetList;    
+
+    /* children node generator. */
+    queryState->querylevel = 2;
+
+    /* 
+     * generator jointree, which has target list per node, 
+     * meanwhile target add to rangtable. 
+     */
+    queryState->qualTargetList = NULL;
+    query->joinTree = NULL;
+    if(NULL != updateStmt->whereList)
+    {
+        queryState->joinTree = QueryJoinTransform(updateStmt->whereList, queryState);
+     
+        query->qualTargetList = queryState->qualTargetList;
+        query->joinTree = queryState->joinTree;
+    }  
+    
+    /* 并将剩余表添加到表达式中 */
+    query->rtjoinTree = (PList)CommonQueryTransform(queryState);
+
+    /* error ocur */
+    if(queryState->processState)
+    {
+        query = NULL;
+    }
+
+    if(NULL != queryState)
+    {
+        FreeMem(queryState);
+    }
+    return query;
+}
+
+/* 
+ *  This merget two targetList into one list,
+ * And targetEntry is repeated, save only one in list.
+ * targetEntry unique identify is rindex and colName.
+ */
+PList MergetTargetList(PList target1, PList target2)
+{
+    foreachWithSize_define_Head;
+    PList result = NULL;
+    PTargetEntry te = NULL;
+    PTargetEntry resultTE = NULL;
+    PResTarget resTarget = NULL;
+
+    if((target1 == NULL) && (target2 == NULL))
+        return NULL;
+
+    /* new list */
+    result = MergeList(target1, NULL);
+
+    if(target2 != NULL)
+    {
+        /* check repeat, and append target2 to result List. */
+        foreachWithSize(target2, tmpCell, listLen)
+        {
+            te = (PTargetEntry)GetCellNodeValue(tmpCell);
+            resTarget = (PResTarget)te->colRef;
+
+            resultTE = QueryRangTblTarget(result, resTarget->name);
+            if(NULL != resultTE && (resultTE->rindex == te->rindex))
+            {
+                continue;
+            }
+
+            result = AppendNode(result, (PNode)te);
+        }
+    }
+
+    return result;
 }

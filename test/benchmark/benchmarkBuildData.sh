@@ -184,12 +184,25 @@ do
   aid=$a
   bid=$(($aid / $naccounts + 1))
 
-  insertSql="insert into $tableName values($aid,$bid,0,'init');"
-  sql_command="${toad_executor_command} \"${insertSql}\" "
-  sh -c "${sql_command}"
+  # insertSql="insert into $tableName values($aid,$bid,0,'init');"
+  insertSql="insert into $tableName values($aid,$bid,0,'i')"
+  let a++ 
 
-  echo "insert into $tableName aid:$aid" 
-  let a++        
+  for number in {1..99}; do   
+    aid=$a
+    bid=$(($aid / $naccounts + 1))
+
+    values="($aid,$bid,0,'i')"
+    insertSql="${insertSql},${values}" 
+
+    let a++  
+  done
+
+  # echo ${insertSql}
+  
+  sql_command="${toad_executor_command} \"${insertSql};\" "
+  sh -c "${sql_command}" 
+  echo "insert into $tableName aid:$aid"      
 done
 
 toad_accountsTime=$(date "+%Y-%m-%d %H:%M:%S")

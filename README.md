@@ -10,7 +10,73 @@ toad database system，“癞蛤蟆”数据库，正如其名，我们想吃天
 
 
 # 更新记录 
+
+## update by 2024/3/29 
+
+源码规模
+```txt
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+C                               47           3264           2534          12860
+C/C++ Header                    55            750            789           1838
+yacc                             1             93             33            828
+Bourne Shell                     6            144            128            475
+Markdown                         4            119              0            376
+JSON                             4              0              0            244
+lex                              3             30             43            243
+make                             4             63             84            127
+-------------------------------------------------------------------------------
+SUM:                           124           4463           3611          16991
+-------------------------------------------------------------------------------
+```
+
+## updated by 2024/3/25 
+
+benchmark 测试结果，采用TPC-B的测试模型。
+
+初始化数据，scale=10, 最大的toad_accounts表有100万条数据，耗时如下：
+
+```shell
+insert into toad_accounts aid:1000000
+load toad_accounts endTime: 2024-03-22 23:39:38
+begin time:2024-03-22 08:26:39
+end time  :2024-03-22 23:39:38
+---------------------------------------------------------
+load data finish.
+total elapse time: 15h12m59s
+create table elapse time: 1s
+total of load table data elapse time: 15h12m58s
+total of load toad_branches data elapse time:
+total of load toad_tellers data elapse time:
+total of load toad_accounts data elapse time: 15h12m58s
+
+real    912m58.523s
+user    13m1.022s
+sys     15m15.532s
+```
+
+运行测试程序，执行了600s,tps=0.27。
+
+```shell
+Test process elapse(s) 594 tps=.27
+---------------------------------------------------------
+test end.............
+begin time: 2024-03-24 08:44:00
+  end time: 2024-03-24 08:54:02
+Test process total runtimes(s)  :10m2s
+Test process total transactions :168
+Test process average tps=.27
+```
+
+## updated by 2024/3/22 
+
+1. 支持update set where基本语句，set中可以带有简单表达式；
+2. 支持多版本，以new->older的顺序进行串链，older版本放在undo数据块；
+3. 服务端以后台服务形式运行，客户端通过共享内存方式与服务端通信，可以支持多客户端单服务端；
+
 ## updated by 2024/1/22 
+
 * 功能变化 
 1. 执行计划整理，增加投影节点，对于逻辑执行计划增加表达式计算；
 

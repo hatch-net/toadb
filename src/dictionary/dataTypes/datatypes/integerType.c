@@ -13,14 +13,25 @@
 */
 
 #include "integerType.h"
-
 #include "dataTypeProc.h"
 
-static HAT_BOOL int32GreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL int32GreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL int32EqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL int32LessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL int32LessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+/* operation type define in A_A_Expr_Op_Type */
+static PExprDataInfo int32GreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32GreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32EqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32LessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32LessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32NotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+
+static PExprDataInfo int32PositiveOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32NegtiveOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+
+static PExprDataInfo int32PlusOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32MinusOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32MultiOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32DivisionOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo int32ModOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+
 static int getIntSize(PExprDataInfo value);
 
 DataTypeProcs integerDataTypeProcEntry =
@@ -33,7 +44,14 @@ DataTypeProcs integerDataTypeProcEntry =
 	    int32EqualOperator,			/* = */
 	    int32GreaterEqualOperator,		/* >= */
 	    int32GreaterOperator,		/* > */
-            // != 
+        int32NotEqualOperator,			/* <> */
+	    int32PositiveOperator,		/* + */
+        int32NegtiveOperator,		/* - */
+        int32PlusOperator,			/* + */
+        int32MinusOperator,			/* - */
+        int32MultiOperator,		/* * */
+        int32DivisionOperator,		/* / */
+        int32ModOperator 			/* % */
     },
     getIntSize          
 };
@@ -48,7 +66,14 @@ DataTypeProcs intDataTypeProcEntry =
 	    int32EqualOperator,			/* = */
 	    int32GreaterEqualOperator,		/* >= */
 	    int32GreaterOperator,		/* > */
-        // != 
+        int32NotEqualOperator,			/* <> */
+	    int32PositiveOperator,		/* + */
+        int32NegtiveOperator,		/* - */
+        int32PlusOperator,			/* + */
+        int32MinusOperator,			/* - */
+        int32MultiOperator,		/* * */
+        int32DivisionOperator,		/* / */
+        int32ModOperator 			/* % */
     },
     getIntSize
 
@@ -68,68 +93,178 @@ static int getIntSize(PExprDataInfo value)
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL int32GreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo int32GreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
-
+    int result = HAT_FALSE;
+    
     if(first > seconde)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result = HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL int32GreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo int32GreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
 
     if(first >= seconde)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result = HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL int32EqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo int32EqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
 
     if(first == seconde)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result = HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL int32LessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo int32LessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
 
     if(first <= seconde)
-        return HAT_TRUE;    
-    return HAT_FALSE;
+        result = HAT_TRUE;    
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL int32LessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo int32LessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
 
     if(first < seconde)
-        return HAT_TRUE;    
-    return HAT_FALSE;
+        result = HAT_TRUE;    
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32NotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
+
+    if(first != seconde)
+        result = HAT_TRUE;    
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32PositiveOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int result = first >= 0 ? first : first * -1;
+    
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32NegtiveOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int result = first > 0 ? first * -1 : first;
+    
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32PlusOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = first + seconde;
+
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32MinusOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = first - seconde;
+
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32MultiOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = first * seconde;
+
+    return getDataInfo(&result, VT_INT);
+}
+
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32DivisionOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = first / seconde;
+
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo int32ModOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = first % seconde;
+
+    return getDataInfo(&result, VT_INT);
 }

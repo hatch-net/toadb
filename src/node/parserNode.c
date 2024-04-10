@@ -165,6 +165,23 @@ static void ShowNodInsertStmt(PNode n, char *prompt, int level)
     hat_log("} %s T_InsertStmt Node end\n", prompt);
 }
 
+static void ShowNodUpdateStmt(PNode n, char *prompt, int level)
+{
+    PUpdateStmt updatestmt = (PUpdateStmt)n;
+
+    ShowBlank(level);
+    hat_log("{ T_UpdateStmt Node: \n");
+
+    ShowNode(updatestmt->relation, "relation", level+1);
+
+    TravelListCell(updatestmt->targetlist, "targetlist ", level+1);
+    TravelListCell(updatestmt->fromList, "fromList", level+1);
+    TravelListCell(updatestmt->whereList, "whereList", level+1);
+
+    ShowBlank(level);
+    hat_log("} %s T_UpdateStmt Node end\n", prompt);
+}
+
 static void ShowNodAttrName(PNode n, char *prompt, int level)
 {
     PAttrName stmt = (PAttrName)n;
@@ -239,6 +256,7 @@ static void ShowNodResTarget(PNode n, char *prompt, int level)
     hat_log("all: %d \n", var->all);
 
     ShowNode((PNode)var->val, "val", level+1);
+    ShowNode((PNode)var->setValue, "setValue", level+1);
 
     ShowBlank(level);
     hat_log("} PResTarget end : \n");
@@ -261,8 +279,14 @@ static void ShowNodConstValue(PNode n, char *prompt, int level)
             hat_log("string %s\n", var->val.pData);
             break;
 	    case VT_INT:
+        case VT_INTEGER:
             ShowBlank(level);
             hat_log("int %d\n", var->val.iData);
+            break;
+        case VT_VARCHAR:
+        case VT_STRING:
+            ShowBlank(level);
+            hat_log("string %s\n", var->val.pData);
             break;
 	    case VT_CHAR:
             ShowBlank(level);
@@ -291,7 +315,7 @@ static void ShowNodA_Expr(PNode n, char *prompt, int level)
     PA_Expr var = (PA_Expr)n;
 
     ShowBlank(level);
-    hat_log("{ A_Expr begin:  \n");
+    hat_log("{ %s A_Expr begin:  \n", prompt);
 
     ShowBlank(level+1);
     hat_log("name:%s \n", var->name);
@@ -308,7 +332,7 @@ static void ShowNodA_Expr(PNode n, char *prompt, int level)
     ShowNode((PNode)var->rexpr, "right expr", level+1);
 
     ShowBlank(level);
-    hat_log("}  A_Expr end:  \n");
+    hat_log("}  %s A_Expr end:  \n", prompt);
 }
 
 static void ShowNodBoolExpr(PNode n, char *prompt, int level)
@@ -345,7 +369,7 @@ static void ShowNodRangeVar(PNode n, char *prompt, int level)
     ShowBlank(level+1);
     hat_log("relname:%s \n", var->relname);
 
-    ShowNode((PNode)var->alias, prompt, level+1);
+    ShowNode((PNode)var->alias, "alias", level+1);
 
     ShowBlank(level);
     hat_log("}  RangeVar end \n");
@@ -669,6 +693,10 @@ static void ShowNode(PNode n, char *prompt, int level)
         
         case T_InsertStmt:
             ShowNodInsertStmt(n, prompt, level);
+        break;
+
+        case T_UpdateStmt:
+            ShowNodUpdateStmt(n, prompt, level);
         break;
         
         case T_AttrName:

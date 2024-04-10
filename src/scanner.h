@@ -5,10 +5,19 @@
 #line 6 "scanner.h"
 /*
  *	toadb scanner 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
-#line 12 "scanner.h"
+#line 21 "scanner.h"
 
 #define  YY_INT_ALIGNED short int
 
@@ -343,9 +352,9 @@ extern int yylex \
 #undef YY_DECL
 #endif
 
-#line 171 "parser/scanner.l"
+#line 183 "parser/scanner.l"
 
 
-#line 350 "scanner.h"
+#line 359 "scanner.h"
 #undef yyIN_HEADER
 #endif /* yyHEADER_H */

@@ -32,20 +32,20 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
 {
     PColumnDef column = NULL;
     PListCell tmpCell = NULL;
-    char pagebuffer[PAGE_MAX_SIZE] = {0};
-    PPageDataHeader pageheader = (PPageDataHeader)pagebuffer;
-    PTableMetaInfo tableinfo = (PTableMetaInfo) (pagebuffer + PAGE_DATA_HEADER_SIZE);
-    int i = 0;
-    int tablefile = -1;
-    TableList tbl_temp = {0};
-    int ret = 0;
+    char *pagebuffer = NULL;
+    PTableMetaInfo tblDefInfo = NULL;
+    PTableList tblInfo = NULL;
     int tableType = 0;
+    int i = 0;
     
     if(NULL == stmt)
     {
         hat_log("create table stmt is NULL\n");
         return -1;
     }
+
+    pagebuffer = (char *)AllocMem(PAGE_MAX_SIZE);
+    tblDefInfo = (PTableMetaInfo) (pagebuffer + PAGE_DATA_HEADER_SIZE);
 
 #ifdef STORAGE_FORMAT_NSM
     tableType = ST_NSM << STORAGE_TYPE_SHIFT;
@@ -54,15 +54,9 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
     tableType = ST_PAX << STORAGE_TYPE_SHIFT;
 #endif
 
-    /* initialize table infomastion to scan list */
-    pageheader->header.pageVersion = PAGE_VERSION;
-    pageheader->header.pageType = PAGE_HEADER | tableType;
-    pageheader->header.pageNum = PAGE_HEAD_PAGE_NUM;
-    pageheader->pageCnt = PAGE_HEAD_PAGE_NUM;
-
-    snprintf(tableinfo->tableName, NAME_MAX_LEN, "%s", stmt->tableName);
-    tableinfo->tableType = tableType;
-    tableinfo->tableId = GetObjectId();
+    /* 1. parser table metadata */
+    snprintf(tblDefInfo->tableName, NAME_MAX_LEN, "%s", stmt->tableName);
+    tblDefInfo->tableType = tableType;
     
     /* column info */
     for(tmpCell = stmt->ColList->head; tmpCell != NULL; tmpCell = tmpCell->next)
@@ -70,53 +64,34 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal)
         column = (PColumnDef)(tmpCell->value.pValue);
         if(NULL == column)
         {
-            hat_log("exec create %s table, column info invalid\n", tableinfo->tableName);
+            hat_log("exec create %s table, column info invalid\n", tblDefInfo->tableName);
             return -1;
         }
 
-        snprintf(tableinfo->column[i].colName, NAME_MAX_LEN, "%s", column->colName);
-        tableinfo->column[i].type = GetColumnType(column->colType);
-        if(tableinfo->column[i].type < 0)
+        snprintf(tblDefInfo->column[i].colName, NAME_MAX_LEN, "%s", column->colName);
+        tblDefInfo->column[i].type = GetColumnType(column->colType);
+        if(tblDefInfo->column[i].type < 0)
         {
-            hat_log("exec create %s table, column type %s invalid\n", tableinfo->tableName, column->colType);
+            hat_log("exec create %s table, column type %s invalid\n", tblDefInfo->tableName, column->colType);
             return -1;
         }
+
+        tblDefInfo->column[i].attrIndex = i;
 
         i++;
     }
-    tableinfo->colNum = i;
-    pageheader->dataOffset = PAGE_DATA_HEADER_SIZE;
-    pageheader->dataEndOffset = sizeof(TableMetaInfo) + sizeof(ColumnDefInfo) * i;
+    tblDefInfo->colNum = i;
 
-    /* create table file */
-    tablefile = CreateTableFile(tableinfo->tableName, 0666);
-    if(tablefile < 0)
+    /* 2. create table file */
+    tblInfo = CreateTblInfo(tblDefInfo);
+    if(NULL == tblInfo)
     {
-        hat_log("exec create %s table failure.\n", tableinfo->tableName);
+        hat_log("exec create %s table failure.\n", tblDefInfo->tableName);
         return -1;
     }
 
-    /* initialize table file */
-    tbl_temp.tbl_fd = tablefile;
-    ret = FlushBuffer(&tbl_temp, pagebuffer);
-    if(ret < 0)
-    {
-        hat_log("exec create %s table failure,errno[%d].\n", tableinfo->tableName, ret);
-        return -1;
-    }
-    
-    smgrClose(tbl_temp.tbl_fd);
-    
-    /* init group file and open */
-    ret = TableCreate(tableinfo->tableName, GROUP_FORK);
-    if (ret < 0)
-    {
-        hat_log("create %s group file failure.\n", tableinfo->tableName);
-    }
-
-    return ret;
+    return 0;
 }
-
 
 int ExecDropTable(PDropStmt stmt, PPortal portal)
 {
@@ -144,6 +119,7 @@ int ExecDropTable(PDropStmt stmt, PPortal portal)
     return ret;
 }
 
+#if 0
 int ExecInsertStmt(PInsertStmt stmt, PPortal portal)
 {
     PTableList tblInfo = NULL;
@@ -220,7 +196,7 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
 
     return 0;
 }
-
+#endif 
 
 /* 
  * Merge two row into struct PScanTableRowData. 

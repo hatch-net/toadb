@@ -83,10 +83,9 @@ typedef struct ModifyTblState
 typedef struct ProjectTblState
 {
     PlanStateNode stateNode;
-
     PNode       subplanState;
-
     PScanState scanState;
+    PNode       resultRow;       /* left查询结果，实际为rowdata/PTableRowDataWithPos指针，这里为了不引用，转为PNode类型 */
 }ProjectTblState, *PProjectTblState;
 
 

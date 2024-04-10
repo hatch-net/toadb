@@ -1,8 +1,17 @@
 /*
  *	toadb portal
- * Copyright (C) 2023-2023, senllang
+ *
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
-
 
 
 #include "portal.h"
@@ -10,6 +19,7 @@
 #include "seqscan.h"
 #include "execNode.h"
 #include "queryNode.h"
+#include "toadmain.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,6 +27,8 @@
 #define hat_log printf 
 
 #define NULL_VALUE " "
+
+extern int runMode;
 
 static int fillBack(char *buf, char op, int size);
 
@@ -39,9 +51,13 @@ PPortal CreatePortal()
     PPortal portal = NULL;
 
     portal = (PPortal) AllocMem(sizeof(Portal));
-    memset(portal, 0x00, sizeof(Portal));
 
     return portal;
+}
+
+int GetPortalSize()
+{
+    return sizeof(Portal);
 }
 
 /* 
@@ -107,6 +123,12 @@ int InitSelectPortal(PList targetList, PPortal portal)
 */
 int PortalPrint(char *buf)
 {
+    if(TOADSERV_RUN_ONLY_SERVER == runMode)
+    {
+        SendServerResult(buf);
+        return 0;
+    }
+
     printf("%s\n", buf);
     return 0;
 }
@@ -159,8 +181,6 @@ int EndPort(PPortal portal)
 
     if(NULL != portal->attrWidth)
         FreeMem(portal->attrWidth);
-
-    FreeMem(portal);
 
     return 0;
 }

@@ -13,16 +13,16 @@
 PTableRowData ExecTableModifyTbl(PExecState eState);
 
 /* routing storage type operator */
-int ExecModifyTable(PTableList tblInfo, PTableRowData insertdata, NodeType type); 
+int ExecModifyTable(PExecState eState, PTableList tblInfo, PTableRowData insertdata, NodeType type); 
 
 /* NSM storage operator */
 int nsm_ExecModifyTable(PTableList tblInfo, PTableRowData insertdata, NodeType type);
 int nsm_ExecInsert(PTableList tblInfo, PTableRowData insertdata);
 
 /* PAX storage operators */
-int pax_ExecModifyTable(PTableList tblInfo, PTableRowData insertdata, NodeType type);
-int pax_ExecInsert(PTableList tblInfo, PTableRowData insertdata);
-
+int pax_ExecModifyTable(PExecState eState, PTableList tblInfo, PTableRowData rowsdata, NodeType type);
+int pax_ExecInsert(PExecState eState, PTableList tblInfo, PTableRowData insertdata);
+int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDataPos);
 
 
 #endif

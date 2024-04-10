@@ -22,9 +22,10 @@
 /* 
  * 计算布尔运算
  */
-int ComputeBoolExpr(PExprDataInfo left, PExprDataInfo right, int op)
+PExprDataInfo ComputeExpr(PExprDataInfo left, PExprDataInfo right, int op)
 {
     PDataTypeProcs typeprocs = NULL;
+    PExprDataInfo result = NULL;
 
     if((NULL == left) || (NULL == right))    
         return 0;
@@ -47,9 +48,9 @@ int ComputeBoolExpr(PExprDataInfo left, PExprDataInfo right, int op)
         if((op >= LESS) && (op < Op_Type_MAX))
         {
             if(typeprocs->opf[op] != NULL)
-                return typeprocs->opf[op](left, right);
+                result = typeprocs->opf[op](left, right);
         }
     }while(0);
-    
-    return 0;
+        
+    return result;
 }

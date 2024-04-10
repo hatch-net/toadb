@@ -54,6 +54,7 @@
 %token INTO
 %token VALUES
 %token UPDATE
+%token SET
 %token WHERE
 %token AND
 %token OR
@@ -80,12 +81,12 @@
 
 %type <list> stmt_list columndef_list values_list multi_values_list values_opt attr_name_list_opt attr_name_list 
              sort_clause limit_clause target_opt target_list 
-             from_clause from_list
+             from_clause from_list set_clause_list set_target_list
              where_clause group_clause groupby_list
 
 %type <node> stmt create_stmt column_def drop_stmt insert_stmt value_data select_stmt select_clause target_element a_expr c_expr 
-             columnRef exprConst groupby_element 
-             alias_clause_opt alias_clause  table_ref relation_expr constValues
+             columnRef exprConst groupby_element update_stmt set_target set_clause
+             alias_clause_opt alias_clause  table_ref update_table_ref relation_expr constValues
             
 
 %start top_stmt
@@ -164,6 +165,10 @@ stmt:       select_stmt
                     {
                         $$ = $1;
                     }
+            | update_stmt
+                    {
+                        $$ = $1;
+                    }                    
             | create_stmt
                     {
                         $$ = $1;
@@ -658,6 +663,72 @@ drop_stmt:          DROP TABLE tablename
                         node->tableName = $3;
 
                         $$ = (PNode)node;
+                    }
+        ;
+update_stmt:    UPDATE update_table_ref SET set_clause_list from_clause where_clause 
+                {
+                    PUpdateStmt node = NewNode(UpdateStmt);
+                    node->relation = $2;
+                    node->targetlist = $4;
+                    node->fromList = $5;
+                    node->whereList = $6;
+                    $$ = (PNode)node;
+                }
+        ;
+update_table_ref:   table_ref
+                    {                    
+                        $$ = $1;
+                    }
+        ;
+set_clause_list: set_clause 
+                    {
+                        PList list = CreateList($1);
+                        $$ = list;
+                    }
+                | set_clause_list ',' set_clause 
+                    {
+                        PList list = AppendNode($1, $3);
+                        $$ = list;
+                    }
+        ;
+set_clause: set_target '=' a_expr
+                    {
+                        PResTarget node = (PResTarget)$1;
+                        node->setValue = $3;
+                        $$ = $1;
+                    }
+                | '(' set_target_list ')' '=' a_expr
+                    {
+                        PListCell tmpCell = NULL;
+                        PList l = $2;
+
+                        for(tmpCell = l->head; tmpCell != NULL; tmpCell = tmpCell->next)
+                        {
+                            PResTarget node = (PResTarget)GetCellNodeValue(tmpCell);
+                            node->setValue = $5;
+                        }
+
+                        $$ = (PNode)$2;
+                    } 
+        ;
+set_target: columnRef
+                    {
+                        PResTarget node = NewNode(ResTarget);
+                        node->name = NULL;            /* without alias name */
+                        node->indirection = NULL;
+                        node->val = $1;
+                        $$ = (PNode)node;
+                    }
+        ;
+set_target_list: set_target
+                    {
+                        PList list = CreateList($1);
+                        $$ = list;
+                    }
+                | set_target_list ',' set_target
+                    {
+                        PList list = AppendNode($1, $3);
+                        $$ = list;
                     }
         ;
 insert_stmt:    INSERT INTO tablename attr_name_list_opt VALUES multi_values_list

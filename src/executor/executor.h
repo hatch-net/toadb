@@ -21,7 +21,9 @@ typedef struct ExecState
     PPortal     portal;
     PNode       planState;              /* 原始计划树状态树根节点 */
     PNode       subPlanNode;            /* 当前正在处理的计划树节点 */
+    PNode       parentPlanNode;
     PNode       subPlanStateNode;       /* 当前正在处理的计划树状态节点 */
+    PNode       parentPlanStateNode;
     PTableRowData scanRowDataLeft;
     PTableRowData scanRowDataRight;
     int         isTop;

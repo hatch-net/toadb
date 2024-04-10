@@ -36,6 +36,7 @@ OBJS = ${patsubst %.c, %.o, $(SOURCE)}
 INC = ${foreach dir, $(INC_DIR), -I$(dir)}
 
 ##########################################
+LDFLAGS += -lpthread
 ##########################################
 DEFINES += -DSTORAGE_FORMAT_PAX -DMEM_DEBUG
 DEBUG_FLAGS = -g
@@ -56,10 +57,10 @@ all: $(default) $(OBJS) $(TARGET)
 
 
 # object compile to O_PATH
-.c.o: $(SOURCE)
+.c.o: $(SOURCE) 
 	$(CC) $(CFLAGS) -c $<
 
-$(TARGET):$(topdir)/*.o
+$(TARGET): $(topdir)/*.o  
 	$(CC) $(CFLAGS) $^ -o $@
 
 # show various value

@@ -36,6 +36,8 @@ PNode subPlanSelectStmt(PPlanProcessor planProcessor);
 
 PNode subPlanInsertStmt(PPlan plan, PQuery subQuery);
 
+PNode subPlanUpdateStmt(PPlanProcessor planProcessor);
+
 PNode GetValuesTypeRangTbl(PList rangTblList);
 
 PNode ProcessQual(PPlanProcessor planProcess);

@@ -23,6 +23,7 @@
 static PNode ProcessTableScan(PPlanProcessor planProcess);
 static PNode ProcessTopNode(PPlanProcessor planProcessor);
 static PNode ProcessSelectQual(PPlanProcessor planProcessor);
+static PNode ProcessQualUpdateSetQual(PPlanProcessor planProcessor);
 
 /* 
  * 物理执行计划生成入口
@@ -64,31 +65,30 @@ PList QueryPlan(PList queryTree)
 PNode SubPlanProcess(PQuery subQuery)
 {
     PPlan subPlan = NULL;
-    PPlanProcessor planProcessor = NULL;
-
+    PlanProcessor planProcessor;
+    
     if(NULL == subQuery)
     {
         hat_log("[SubPlanProcess]invalid subQuery\n");
         return NULL;
     }
     
-    planProcessor = AllocMem(sizeof(PlanProcessor));
     subPlan = NewNode(Plan);
     subPlan->commandType = subQuery->commandType;
     subPlan->QueryTree = (PNode)subQuery;  
     
-    planProcessor->plan = subPlan;
-    planProcessor->query = subQuery;
+    planProcessor.plan = subPlan;
+    planProcessor.query = subQuery;
 
     switch(subQuery->commandType)
     {
         case CMD_UTILITY:                      
             break;
         case CMD_SELECT:
-            subPlanSelectStmt(planProcessor);
+            subPlanSelectStmt(&planProcessor);
             break;
         case CMD_UPDATE:
-            
+            subPlanUpdateStmt(&planProcessor);
             break;
         case CMD_INSERT:
             subPlanInsertStmt(subPlan, subQuery);
@@ -99,8 +99,7 @@ PNode SubPlanProcess(PQuery subQuery)
             /* empty list */
             break;
     }
-    
-    FreeMem(planProcessor);    
+      
     return (PNode)subPlan;
 }
 
@@ -122,9 +121,11 @@ PNode subPlanSelectStmt(PPlanProcessor planProcessor)
     
     queryTblNode = NewNode(QueryTbl);
 
-    /* rangtable scan node */
+    /* rangtable scan node, which is from rtJoinTree List. */
+    planProcessor->currentNode = (PNode)planProcessor->query->rtjoinTree;
     queryTblNode->subplan = ProcessTableScan(planProcessor);
 
+    /* if qual is not null, add select node beyond scan node. */
     if(NULL != planProcessor->query->joinTree)
     {
         planProcessor->currentNode = (PNode)planProcessor->query->joinTree;
@@ -174,7 +175,6 @@ static PNode ProcessSelectQual(PPlanProcessor planProcessor)
 /* 
  * 增加计划树的顶层节点；
  * 当select时，增加投影project节点；
- * 当insert/update/delete时，增加modify节点
  */
 PNode ProcessTopNode(PPlanProcessor planProcessor)
 {
@@ -184,6 +184,7 @@ PNode ProcessTopNode(PPlanProcessor planProcessor)
     switch(query->commandType)
     {
         case CMD_SELECT:
+        case CMD_UPDATE:
             {
                 /* project node */
                 PProjectTbl projectNode = NewNode(ProjectTbl);
@@ -193,7 +194,6 @@ PNode ProcessTopNode(PPlanProcessor planProcessor)
                 rootNode = (PNode)projectNode;
             }
             break;
-        case CMD_UPDATE:
         case CMD_INSERT:
         case CMD_DELETE:
             {
@@ -205,6 +205,7 @@ PNode ProcessTopNode(PPlanProcessor planProcessor)
     }
     return rootNode;
 }
+
 
 /*
  * 将insert into ... values ... 形式转换为 insert table select * from valuesttable
@@ -275,17 +276,16 @@ static PNode ProcessTableScan(PPlanProcessor planProcess)
     PNode rtScanTree = NULL;
     PNode rtTreeRoot = NULL;
 
-    /* search qual */
-    if(NULL != joinList)
-    {
-        /* create scan node, push down to table scan, and create column node */
-        ;
-    }
-
     /* create the other scan node, and create column scan node */
     planProcess->currentNode = (PNode)planProcess->query->rtjoinTree;
     rtTreeRoot = ProcessQual(planProcess);
-    
+
+    /* search qual */
+    if(NULL != joinList)
+    {
+        /* TODO: create scan node, push down to table scan, and create column node */
+        ;
+    }    
     return rtTreeRoot;
 }
 
@@ -426,3 +426,65 @@ PNode ProcessJoinNode(PPlanProcessor planProcess)
     return (PNode)nlNode;
 }
 
+PNode subPlanUpdateStmt(PPlanProcessor planProcessor)
+{
+    PModifyTbl modifyNode = NULL;
+    PPlan plan = NULL;
+
+    if(NULL == planProcessor)
+        return NULL;
+    
+    if(planProcessor->query->rtable->length > 1)
+    {
+        hat_error("update table ambiguous.\n");
+        return NULL;
+    }
+
+    plan = planProcessor->plan;
+    
+    /* 
+     * Add modify node as root, which execute update values, 
+     * has subnode with scan values from range table of values type. 
+     */    
+    modifyNode = NewNode(ModifyTbl);    
+
+     /* rangtable scan node, which is from rtJoinTree List. */
+    modifyNode->leftplan = ProcessTableScan(planProcessor);
+    modifyNode->rangTbl = GetFirstCellNode(planProcessor->query->rtable);
+
+    /* if qual is not null, add select node beyond scan node. */
+    if(NULL != planProcessor->query->joinTree)
+    {
+        planProcessor->currentNode = (PNode)planProcessor->query->joinTree;
+        planProcessor->subQuery = (PQuery)modifyNode->leftplan;
+
+        /* process jointree,   qual node, and push down select  */
+        modifyNode->leftplan = ProcessSelectQual(planProcessor);
+    }
+
+    /* if insert/udpate/delete, add project node. */
+    planProcessor->currentNode = (PNode)modifyNode->leftplan;
+    modifyNode->leftplan = ProcessTopNode(planProcessor);
+
+    /* update modify node right is updateSelect node */
+    planProcessor->currentNode = (PNode)modifyNode;
+    modifyNode->rightplan = ProcessQualUpdateSetQual(planProcessor);
+
+    plan->leftplan = (PNode)modifyNode;
+    return (PNode)plan;
+}
+
+static PNode ProcessQualUpdateSetQual(PPlanProcessor planProcessor)
+{
+    PSelectNewValue selectNode = NewNode(SelectNewValue);
+
+    /* It is initialize when excutor this node. */
+    selectNode->qual = NULL;
+    selectNode->subplan = NULL;
+    selectNode->rtable = planProcessor->query->rtable;
+
+    /* 这里的target是 top target list. */
+    selectNode->targetList = planProcessor->query->targetList;
+
+    return (PNode)selectNode;
+}

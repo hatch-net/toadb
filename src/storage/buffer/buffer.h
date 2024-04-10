@@ -22,6 +22,7 @@
 #include "list.h"
 #include "relation.h"
 #include "memStack.h"
+#include "smgr.h"
 
 typedef struct ScanPageInfo  *PScanPageInfo;
 
@@ -29,10 +30,9 @@ typedef struct TableList
 {
     DList list;
     PRelation rel;
-    PPageDataHeader tableInfo;
+    PPageDataHeader tableInfo;  /* first data page */
     PTableMetaInfo tableDef;
-    PGroupPageHeader groupInfo;
-    int tbl_fd;
+    PGroupPageHeader groupInfo;  /* first group page */
     PsgmrInfo sgmr;
 }TableList, *PTableList;
 
@@ -45,8 +45,9 @@ typedef struct GroupItemData
 
 typedef struct HeapItemData
 {
-    PageOffset pagePos;
-    ItemData ItemData;
+    PageOffset pageno;
+    int        itemOffset;
+    ItemData   itemData;
 }HeapItemData, *PHeapItemData;
 
 typedef struct SearchPageInfo
@@ -56,6 +57,21 @@ typedef struct SearchPageInfo
     int group_id;
     int pageNum; 
 }SearchPageInfo, *PSearchPageInfo;
+
+/* exec form rowdata */
+typedef struct AttrDataPosition
+{
+    HeapItemData headItem;
+    TableRowData rowData;
+}AttrDataPosition, *PAttrDataPosition;
+
+/* exec form update rowdata */
+typedef struct TableRowDataWithPos
+{
+    int size;           /* row data size */
+    int num;            /* column num of row data */
+    PAttrDataPosition attrDataPos[FLEXIBLE_SIZE];
+}TableRowDataWithPos, *PTableRowDataWithPos;
 
 #define GetGroupMemberNum(gItemData) (GetItemSize(gItemData->ItemData.len) / sizeof(MemberData) - 1)
 
@@ -69,6 +85,10 @@ extern DList* g_TblList;
 
 /* search table metadata infomation, if NULL, load from file. */
 PTableList GetTableInfo(char *filename);
+PTableList GetTableInfoByRel(PRelation rel);
+
+int CloseTable(PTableList tbl);
+PTableList CreateTblInfo(PTableMetaInfo tblDef);
 
 /* search table metadata infomation. */
 PTableList SearchTblInfo(char *filename);
@@ -82,23 +102,29 @@ PColumnDefInfo GetAttrDef(PTableList tblInfo, char *attrName);
 int ReleaseTblInfo(PTableList tblInfo);
 int ReleaseAllTblInfoResource();
 
+int CreateBufferPool(int pageNum);
+
 /* get specified page */
 PPageDataHeader GetPageByIndex(PTableList tblInfo, int index, ForkType forkNum);
+int ReleasePage(PPageDataHeader page);
+int ReleaseAllResourceOwner();
 
 /* find free space page */
 PPageDataHeader GetSpacePage(PTableList tblInfo, int size, PageOp op, ForkType forkNum);
+PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, ForkType forkNum, int startPageIndex, int pageType);
 
 /* find free space group page */
-int GetSpaceGroupPage(PTableList tblInfo, PTableRowData insertdata, PageOp op, PPageDataHeader *pageList);
+int GetSpaceGroupPage(PTableList tblInfo, PTableRowData insertdata, PageOp op, PPageDataHeader *pageList, PScanPageInfo scanInfo);
 
-PGroupItemData FindGroupInfo(PTableList tblInfo, int groupId);
-PGroupItemData GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo);
+// PGroupItemData FindGroupInfo(PTableList tblInfo, int groupId);
+int GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo, PGroupItemData gItemData);
+
 int GetPageNoFromGroupInfo(PSearchPageInfo groupInfo, int AttrIndex);
 int GetGroupMemberPageNo(PMemberData memDataPos, int index);
 
 PPageDataHeader GetFreeSpaceMemberPage(PTableList tblInfo, int size, PGroupItemData item, PageOp op, int colIndex);
 PPageDataHeader* GetGroupMemberPages(PTableList tblInfo, PGroupItemData item, int *pageNum);
-PPageDataHeader* GetGroupMemberPagesOpt(PTableList tblInfo, PScanPageInfo scanPageInfo);
+int GetGroupMemberPagesOpt(PTableList tblInfo, PScanPageInfo scanPageInfo);
 
 /* insert one group info into group file */
 int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num);
@@ -116,11 +142,14 @@ int InitPage(char *page, int flag);
 
 /* main table fork page row */
 PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo);
-PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int rowIndex);
+PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int rowIndex, PItemData itemData);
+PTableRowData GetRowDataFromExtPage(PTableList tblInfo, int pageno, int itemIndex);
 
 /* form row data and deform column data */
 PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt);
+
 PTableRowData DeFormRowData(PPageDataHeader page, int pageffset);
+PRowData DeFormRowDatEx(PPageDataHeader page, int pageffset);
 
 /* form group row data, row array return */
 PTableRowData FormColRowsData(PTableRowData insertdata);
@@ -131,18 +160,16 @@ int UpdateMetaData(PTableList tblInfo, ForkType forkNum);
 int UpdateGroupMetaData(PTableList tblInfo, PGroupPageHeader page);
 int UpdateTableMetaData(PTableList tblInfo, PPageDataHeader page);
 
-int CloseTable(PTableList tbl);
-
-
 /* buffer operator */
-int FlushBuffer(PTableList tblInfo, char *buffer);
 int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
+
 int WriteRowItemData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
+int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row, PRowHeaderData rowHeader);
 
-
+int WriteRowDataOnly(PTableList tblInfo, PPageDataHeader page, PRowData row, PItemData oldItem);
 
 PPageDataHeader ReadPage(PTableList tblInfo, int index, ForkType forkNum);
 int WritePage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum);
-
+int FlushPage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum);
 
 #endif

@@ -57,6 +57,9 @@ typedef struct List
 
 typedef void (*fpNodeShow)(PNode n, char *prompt, int level);
 
+#define foreachWithSize_define_Head PListCell tmpCell = NULL;int listLen = 0
+#define foreachWithSize(list, tmpCell, listLen) for(tmpCell = (list)->head, listLen = (list)->length; (tmpCell != NULL) && (listLen > 0); tmpCell = tmpCell->next, listLen--)
+
 PNode CreateNode(int size, NodeType type);
 PList CreateCell(PList list);
 

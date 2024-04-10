@@ -15,6 +15,7 @@ PTableRowData ExecProcPlan(PExecState eState);
 PTableRowData ExecProcNestLoop(PExecState eState);
 
 PTableRowData ExecProcSeqScan(PExecState eState);
+PTableRowData ExecProcReSeqScan(PExecState eState);
 
 PTableRowData ExecProcValueScan(PExecState eState);
 
@@ -23,5 +24,7 @@ PTableRowData ExecProcModifyTbl(PExecState eState);
 PTableRowData ExecProcProjectTbl(PExecState eState);
 
 PTableRowData ExecSelectResultNode(PExecState eState);
+
+PTableRowData ExecSelectNewValue(PExecState eState);
 
 #endif

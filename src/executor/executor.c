@@ -13,9 +13,7 @@
 #include "buffer.h"
 #include "execInitNode.h"
 #include "execNodeProc.h"
-
-// #define hat_log printf
-#define hat_log 
+#include "public.h"
 
 void ExecutorMain(PList list)
 {
@@ -78,7 +76,8 @@ void ExecutorPlan(PExecState eState)
  */
 void ExecutorStart(PNode subPlan, PExecState *eState)
 {
-    PPortal portal = NULL;
+    int portalSize = 0;
+    char *pMem = NULL;
 
     if(NULL == subPlan)
     {
@@ -86,10 +85,12 @@ void ExecutorStart(PNode subPlan, PExecState *eState)
         return;
     }
 
-    portal = CreatePortal();
+    portalSize = GetPortalSize();
 
-    *eState = (PExecState)AllocMem(sizeof(ExecState));
-    (*eState)->portal = portal;
+    pMem = AllocMem(sizeof(ExecState) + portalSize);
+
+    *eState = (PExecState)pMem;
+    (*eState)->portal = (PPortal)(pMem + sizeof(ExecState));
     (*eState)->plan = subPlan;
 
     InitExecState(*eState);

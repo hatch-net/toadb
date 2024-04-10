@@ -29,9 +29,12 @@ typedef struct dListCell
 
 int AddDListTail(PDList *list, PDList cell);
 int DelDListNode(PDList *list, PDList cell);
+
 int AddCellToListTail(PDList *head, void *ptr);
+int AddDListNext(PDList *list, PDList cell);
 
 PDList PopDListHeadNode(PDList *list);
+PDList PopDListTailNode(PDList *list);
 
 void EreaseDListNode(PDList node);
 

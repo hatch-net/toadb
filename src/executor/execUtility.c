@@ -33,7 +33,7 @@ void ExecutorUtility(PPlan plan, PPortal portal)
         case T_DropStmt:
         {
             PDropStmt dropstmt = (PDropStmt)parserNode;
-            hat_log("exec T_DropStmt Node: drop table :%s \n", dropstmt->tableName);
+            hat_log("exec T_DropStmt Node: drop table: %s \n", dropstmt->tableName);
             ret = ExecDropTable(dropstmt, portal);
             snprintf(pbuf, PORT_BUFFER_SIZE, "Drop table result %s", ret == 0? "success":"failure");
         }

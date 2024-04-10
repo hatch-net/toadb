@@ -31,31 +31,37 @@
 #include "plan.h"
 #include "memStack.h"
 #include "config_pub.h"
+#include "ipc.h"
+#include "resourceMgr.h"
 
 #define hat_log printf
 
 // #define PARSER_TREE_PRINT 1
 
 char *DataDir = "./toadbtest";
+int runMode = TOADSERV_RUN_CLIENT_SERVER;
+int pageNum = 16;
 
 PMemContextNode dictionaryContext = NULL;
+PMemContextNode memPoolContext = NULL;
+
+PClientSharedInfo clientSharedInfo = NULL;
+
+static void showHelp();
+
+static int WaitClientData();
+static int NotifyClientResultData();
+
+static int ToadSingClientMain();
+static void exitServerProc();
+
+static int WriteResultData(char *result);
 
 /* 
  * toadb数据库服务入口，进行SQL解析，执行 
  */
 int toadbMain(int argc, char *argv[]) 
 {
-    char command[MAX_COMMAND_LENGTH];
-    //struct passwd *pw = getpwuid(getuid());
-    //char *username = pw->pw_name;
-    char *username = "toadb";
-    char *prompt = ">";
-    int commandlen = 0;
-
-    if (getuid() == 0) {
-        prompt = "#";
-    }
-
     /* argments process */
     args_opt(argc, argv);
 
@@ -67,9 +73,185 @@ int toadbMain(int argc, char *argv[])
         return -1;
     }
 
-    InitToad();
+    printf("start toadb runMode %d ...\n", runMode);
+    switch(runMode)
+    {
+        case TOADSERV_RUN_CLIENT_SERVER:
+            ToadSingClientMain();
+        break;
+        case TOADSERV_RUN_ONLY_SERVER:
+            ToadbServerMain(argc, argv);
+        break;
+        default:
+        break;
+    }
+    return 0;
+}
 
-    while (1) 
+int ToadbServerMain(int argc, char *argv[]) 
+{
+    RunToadbServerDemon();
+    return 0;
+}
+
+int RunToadbServerDemon()
+{
+    int pid = 0;
+
+    /* check server demon is running. */
+    if(ToadbServiceRunning())
+    {
+        return 0;
+    }
+
+    pid = fork();
+    if(pid == 0)
+    {
+        /* child process */
+        printf("start toadb service ...\n");
+        StartToadbService();
+    }
+    else if(pid < 0)
+    {
+        /* error */
+        printf("start toadb service error, when process fork.\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+int ToadbServiceRunning()
+{
+
+    return 0;
+}
+
+int SendServerResult(char *result)
+{
+    int writeLen = 0;
+
+    if(clientSharedInfo->dataLen >= MAX_COMMAND_LENGTH)
+    {
+        NotifyClientReadData();
+        WaitClientDataArrive();
+
+        clientSharedInfo->dataLen = 0;
+    }
+
+    writeLen = WriteResultData(result);
+
+    return writeLen;
+}
+
+static int WriteResultData(char *result)
+{
+    int dataLen = 0;
+    char *pData = NULL;
+    char endFlag = '\n';
+    
+    if(NULL == result)
+        return 0;
+
+    dataLen = strlen(result) + 1;
+    
+    /* multiple result */
+    if(clientSharedInfo->dataLen > 0)
+        clientSharedInfo->data[clientSharedInfo->dataLen-1] = endFlag;
+
+    pData = clientSharedInfo->data + clientSharedInfo->dataLen;
+
+    clientSharedInfo->command = SERVER_EXCUTOR_RESULT_COMMAND;    
+    memcpy(pData, result, dataLen);
+
+    clientSharedInfo->dataLen += dataLen ;
+
+    return dataLen;
+}
+
+int SendFinishAndNotifyClient()
+{
+    clientSharedInfo->command = SERVER_EXCUTOR_RESULT_FINISH;
+
+    NotifyClientResultData();
+    return 0;
+}
+
+int StartToadbService()
+{
+    char command[MAX_COMMAND_LENGTH] = {0};
+
+    InitServerSharedEnv((char **)&clientSharedInfo);
+    clientSharedInfo->command = 0;
+    clientSharedInfo->dataLen = 0;
+    
+    atexit(exitServerProc);
+
+    InitToad();
+    
+    do
+    {
+        WaitClientData();
+
+        if(clientSharedInfo->command == CLIENT_SERVICE_STOP_COMMAND)
+        {
+            hat_log("exit taodb service now...\n");
+            break;
+        }
+
+        if(clientSharedInfo->dataLen > 0)
+        {
+            memcpy(command, clientSharedInfo->data, clientSharedInfo->dataLen);
+            clientSharedInfo->dataLen = 0;
+
+            ToadMainEntry(command);
+        }
+
+        SendFinishAndNotifyClient();
+    } while (1);
+    
+    ExitToad();
+
+    DestorySeverSharedEnv((char**)&clientSharedInfo);
+
+    return 0;
+}
+
+static int WaitClientData()
+{
+    WaitClientDataArrive();
+    return 0;
+}
+
+static int NotifyClientResultData()
+{
+    NotifyClientReadData();
+    return 0;
+}
+
+/* 
+ * callback function.
+ * This function is called when exit process.
+ */
+void exitServerProc()
+{
+    DestorySeverSharedEnv((char**)&clientSharedInfo);
+}
+
+int ReadCommandLine(char *command)
+{
+    //struct passwd *pw = getpwuid(getuid());
+    //char *username = pw->pw_name;
+    char *username = "toadb";
+    char *prompt = ">";
+    int commandlen = 0;
+
+    if (getuid() == 0) 
+    {
+        prompt = "#";
+    }
+
+    do
     {
         printf("%s%s ", username, prompt);
         if (fgets(command, MAX_COMMAND_LENGTH, stdin) == NULL) 
@@ -78,10 +260,21 @@ int toadbMain(int argc, char *argv[])
         }
 
         commandlen = strlen(command);
-        if(commandlen <= 1)
-            continue;
-        
-        command[commandlen-1] = '\0'; /* skip \n */
+    } while (commandlen <= 1);
+    
+    command[commandlen-1] = '\0'; /* skip \n */
+    return commandlen;
+}
+
+static int ToadSingClientMain()
+{
+    char command[MAX_COMMAND_LENGTH];
+
+    InitToad();
+
+    while (1) 
+    {
+        ReadCommandLine(command);
         if(strcmp(command, "quit") == 0)
         {
             break;
@@ -91,6 +284,7 @@ int toadbMain(int argc, char *argv[])
     }
 
     ExitToad();
+
     return 0;
 }
 
@@ -142,6 +336,7 @@ int ToadMainEntry(char *query)
 
     /* 释放解析树占用的内存资源 */
     ReleaseParserTreeResource(parserTree);
+    ReleaseAllResourceOwner();
     
     /* relese memory context */
     currContext = MemMangerSwitchContext(preContext);
@@ -157,9 +352,19 @@ int InitToad()
     /* Memory Context Manager Initialize at the head. */
     MemMangerInit(); 
 
+    /* initialize memory pool context. */
+    oldContext = MemMangerNewContext("memoryPool");
+    memPoolContext = MemMangerSwitchContext(oldContext);
+    
     /* initialize dictionary memory context. */
     oldContext = MemMangerNewContext("dictionaryTop");
     dictionaryContext = MemMangerSwitchContext(oldContext);
+
+    oldContext = MemMangerNewContext("bufferPoolTop");
+    CreateBufferPool(pageNum);
+    dictionaryContext = MemMangerSwitchContext(oldContext);
+
+    CreateResourceOwnerPool();
 
     return 0;
 }
@@ -205,7 +410,7 @@ int args_opt(int argc, char *argv[])
     /* getopt error */
     opterr = 1;
 
-    while((c =getopt_long(argc, argv, "D:C:-", 
+    while((c =getopt_long(argc, argv, "D:M:-", 
                             long_options, &optindex))!= -1)
     {  
         switch(c)
@@ -213,8 +418,14 @@ int args_opt(int argc, char *argv[])
             case 'D':
                 DataDir = strdup(optarg);
             break;
-            case 'C':
-                
+            case 'M':
+                runMode = atoi(optarg);
+            break;
+            case 'r':
+            break;
+            case 'o':
+            break;
+            case 'n':
             break;
             default:
 

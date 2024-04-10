@@ -95,4 +95,13 @@ typedef struct SelectResult
     PList       targetList;   /* qual target list */
 }SelectResult, *PSelectResult;
 
+typedef struct SelectNewValue
+{
+    NodeType    type;
+    PList       subplan;     /* list subnode */
+    PList       qual;        /* qual list */
+    PList       rtable;
+    PList       targetList;   /* qual target list */
+}SelectNewValue, *PSelectNewValue;
+
 #endif

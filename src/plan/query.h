@@ -18,6 +18,8 @@
 #include "node.h"
 #include "queryNode.h"
 
+#define FIRST_RANGTABLE_INDEX 1
+
 typedef struct QueryState
 {
     int queryId;
@@ -44,10 +46,12 @@ PQuery transformStmt(PNode parserTree);
 
 PQuery transformSelectStmt(PSelectStmt selectStmt);
 
+PQuery transformUpdateStmt(PUpdateStmt updateStmt);
+
 /* DDL process */
 PQuery transformUtilityStmt(PNode parser);
 
-PList RangTblRewriteFromClause(PList fromList);
+PList RangTblRewriteFromClause(PQueryState queryState, PList fromList);
 
 PList QueryJoinTransform(PList qual, PQueryState queryState);
 

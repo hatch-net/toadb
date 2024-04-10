@@ -56,14 +56,14 @@ builddir = $(topdir)/build
 ##########################################
 ##########################################
 # DEBUGDEF = -DPARSER_DEBUG_LOG 
-DEFINES += -DSTORAGE_FORMAT_PAX -DMEM_DEBUG
+DEFINES += -DSTORAGE_FORMAT_PAX
 DEFINES += ${DEBUGDEF}
-# LDFLAGS += -lpthread
+LDFLAGS += -lpthread
 DEBUG_FLAGS = -g
 ##########################################		
 		
 CC = gcc
-#CFLAGS += -O2
+# CFLAGS += -O2
 
 CFLAGS += ${INC}
 CFLAGS += ${DEFINES}
@@ -73,17 +73,17 @@ CFLAGS += ${DEBUG_FLAGS}
 
 # compile start
 .PHONY: all clean parser
-all: $(default) $(builddir) $(OBJS) $(TARGET) 
+all: $(default) $(builddir) $(TARGET) 
 
 #build dir create
 $(builddir):
 	mkdir -p $(builddir)
 
 # object compile to O_PATH
-.c.o: $(SOURCE)
-	$(CC) $(CFLAGS) -c $<
+# .c.o: $(SOURCE)
+#	$(CC) $(CFLAGS) -c $<
 
-$(TARGET):$(topdir)/*.o
+$(TARGET):$(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@
 
 # show various value
@@ -113,4 +113,5 @@ client:
 
 clean:
 	rm -rf ${TARGET} ${OBJS} ${builddir} $(topdir)/*.o ${SCANNER} ${PARSER} ${PARSER_H} ${SCANNER_H}
+	make -C ${CLIENT_DIR}/ clean 
 	

@@ -26,7 +26,7 @@ PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan);
 
 
 PTableRowData ExecSeqscanNode(PExecState eState);
-
+int ExecReSeqScan(PExecState eState);
 PTableRowData ExecSeqscanNodeEnd(PExecState eState);
 
 PTableRowData SeqscanNext(PExecState eState);

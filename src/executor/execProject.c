@@ -19,14 +19,18 @@
 #include "execNode.h"
 #include "queryNode.h"
 #include "public.h"
+#include "execExpre.h"
 
-#include <stdio.h>
-
+#include <string.h>
 
 
 static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl);
+static PTableRowDataWithPos FetchTargetColumnsPos(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl);
 
 
+/* 
+ * project logical 
+*/
 PTableRowData ExecTableProject(PExecState eState)
 {
     PProjectTbl plan = NULL;
@@ -49,8 +53,53 @@ PTableRowData ExecTableProject(PExecState eState)
         return NULL;
     }
 
+    /* 
+     * transform column data matching qualtargetlist.
+     * record scanrowdata to estate->scanRowDataLeft.
+     * for update
+     */
+    eState->scanRowDataLeft = rowData;
+
     /* transform column data matching targetlist. */
     rowData = FetchTargetColumns((PScanTableRowData)rowData, plan->targetList, plan->rtable);
+    return rowData;
+}
+
+/* 
+ * project logical 
+ * tuple position will be saved for update command;
+ * 
+*/
+PTableRowData ExecTableUpdateProject(PExecState eState)
+{
+    PProjectTbl plan = NULL;
+    PProjectTblState planState = NULL;    
+    PTableRowData rowData = NULL;
+
+    /*
+     * eState->subPlanNode and  eState->subPlanStateNode 
+     * is current plan , planState Node;
+     */
+    plan = (PProjectTbl)eState->subPlanNode;
+    planState = (PProjectTblState)eState->subPlanStateNode;
+
+    eState->subPlanNode = (PNode)plan->subplan;
+    eState->subPlanStateNode = (PNode)planState->subplanState;
+    rowData = ExecNodeProc(eState);
+    if(NULL == rowData)
+    {
+        /* erorr ocurr, query ending. */
+        return NULL;
+    }   
+
+    /* this rowData column matching parenttarget list*/
+    rowData = (PTableRowData)FetchTargetColumnsPos((PScanTableRowData)rowData, plan->targetList, plan->rtable);
+
+    /* 将设置的新字段值替换到行数据中，生成新的行数据 */
+    eState->subPlanNode = (PNode)plan;
+    eState->subPlanStateNode = (PNode)planState;
+    planState->resultRow = (PNode)rowData;
+    
     return rowData;
 }
 
@@ -133,7 +182,8 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
         PTargetEntry targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
         PResTarget restarget = (PResTarget)targetEntry->colRef;
         PColumnRef colDef = (PColumnRef)restarget->val;
-
+        colDef->attrIndex = targetEntry->attrIndex;
+        
         /* 根据target中列对应的表index，找到表的信息记录 */
         rte = (PRangTblEntry)GetCellValueByIndex(rangTbl, targetEntry->rindex);
         if(NULL == rte)
@@ -143,7 +193,7 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
         }
 
         /* 根据表元数据定义，找到对应的表的查询行 */
-        tblRowPosition = GetTblRowDataPosition(scanTblRowInfo, rte->tblInfo);
+        tblRowPosition = GetTblRowDataPosition(scanTblRowInfo, rte->tblInfo, rte->rindex);
         if(NULL == tblRowPosition)
         {
             hat_error("rowdata position not founded.\n");
@@ -151,7 +201,7 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
         }
 
         /* 根据target中列的定义，找到对应列的信息进行投影，得到该表列的投影字段数组 */
-        rawcolrow[colrowIndex] = GetColRowData(tblRowPosition, colDef);
+        rawcolrow[colrowIndex] = GetColRowData(tblRowPosition, colDef, NULL, 0);
         if(NULL == rawcolrow[colrowIndex])
         {
             hat_error("column %d rowdata not founded.\n", colrowIndex);
@@ -168,6 +218,86 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
     else
     {
         hat_error("column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
+    }
+
+    return resultRowData;
+}
+
+/* 
+ * fetch row data, which column matching targetlist. 
+ * 两个表的查询结果行，要根据target中的列信息，将行数据投影成一个新的结果行。
+ * 并且返回数据和行的位置信息；
+ */
+static PTableRowDataWithPos FetchTargetColumnsPos(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl)
+{
+    PTableRowDataWithPos resultRowData = NULL;
+    PTableRowDataPosition tblRowPosition = NULL;
+    int colrowIndex = 0;
+
+    PListCell tmpCell = NULL;
+    PRangTblEntry rte = NULL;
+    PAttrDataPosition attrDataPos = NULL;
+    AttrDataPosition tempDataPos = {0};
+    PTableRowData newRowData = NULL;
+    int size = 0;
+
+    if((NULL == targetList) || (NULL == scanTblRowInfo) || (NULL == rangTbl))
+    {
+        return NULL;
+    }
+
+    resultRowData = (PTableRowDataWithPos)AllocMem(sizeof(TableRowDataWithPos) + sizeof(PAttrDataPosition) * targetList->length);
+    resultRowData->size = sizeof(TableRowDataWithPos) + sizeof(PAttrDataPosition) * targetList->length;
+
+    /* traverse target list */
+    for(tmpCell = targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    {
+        PTargetEntry targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
+        PResTarget restarget = (PResTarget)targetEntry->colRef;
+        PColumnRef colDef = (PColumnRef)restarget->val;
+
+        /* 根据target中列对应的表index，找到表的信息记录 */
+        rte = (PRangTblEntry)GetCellValueByIndex(rangTbl, targetEntry->rindex);
+        if(NULL == rte)
+        {
+            hat_error("Rang table not founded.\n");
+            break;
+        }
+
+        /* 根据表元数据定义，找到对应的表的查询行 */
+        tblRowPosition = GetTblRowDataPosition(scanTblRowInfo, rte->tblInfo, rte->rindex);
+        if(NULL == tblRowPosition)
+        {
+            hat_error("rowdata position not founded.\n");
+            break;
+        }
+
+        /* 根据target中列的定义，找到对应列的信息进行投影，得到该表列的投影字段数组 */
+        newRowData = GetColRowData(tblRowPosition, colDef, &tempDataPos, 0);
+        if(NULL == newRowData)
+        {
+            hat_error("column %d rowdata not founded.\n", colrowIndex);
+            break;
+        } 
+        
+        size = sizeof(AttrDataPosition) + sizeof(PRowColumnData) * newRowData->num;
+        attrDataPos = (PAttrDataPosition)AllocMem(size);
+        attrDataPos->headItem = tempDataPos.headItem;
+
+        size = sizeof(TableRowData) + sizeof(PRowColumnData) * newRowData->num;
+        memcpy(&(attrDataPos->rowData), newRowData, size);
+
+        resultRowData->attrDataPos[colrowIndex] = attrDataPos;
+        resultRowData->num += 1;
+        
+        colrowIndex++;
+    }
+
+    if(colrowIndex != targetList->length)
+    {
+        hat_error("column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
+        /* TODO: release resultRowData */
+        resultRowData = NULL;
     }
 
     return resultRowData;

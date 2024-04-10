@@ -59,6 +59,12 @@ PTableRowData ExecProcSeqScan(PExecState eState)
     return ExecSeqscanNode(eState);
 }
 
+PTableRowData ExecProcReSeqScan(PExecState eState)
+{
+    ExecReSeqScan(eState);
+    return NULL;
+}
+
 PTableRowData ExecProcValueScan(PExecState eState)
 {
     return ExecScanValuesNode(eState);;
@@ -75,7 +81,12 @@ PTableRowData ExecProcModifyTbl(PExecState eState)
 
 PTableRowData ExecProcProjectTbl(PExecState eState)
 {
-    return ExecTableProject(eState);
+    PTableRowData rowData = NULL;
+
+    rowData = ExecTableProject(eState);
+
+
+    return rowData;
 }
 
 PTableRowData ExecTableQueryNode(PExecState eState)
@@ -85,5 +96,30 @@ PTableRowData ExecTableQueryNode(PExecState eState)
 
 PTableRowData ExecSelectResultNode(PExecState eState)
 {
-    return ExecSelect(eState);
+    PTableRowData rowData = NULL;
+
+    /*
+     * eState->subPlanNode and  eState->subPlanStateNode 
+     * is current plan , planState Node;
+     */
+
+    rowData = ExecSelect(eState);
+
+    return rowData;
 }
+
+
+PTableRowData ExecSelectNewValue(PExecState eState)
+{
+    PTableRowData rowData = NULL;
+
+    /*
+     * eState->subPlanNode and  eState->subPlanStateNode 
+     * is current plan , planState Node;
+     */
+
+    rowData = ExecUpdateSelect(eState);
+
+    return rowData;
+}
+            

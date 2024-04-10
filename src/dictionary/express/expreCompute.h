@@ -20,6 +20,6 @@
 #include "dataTypeProc.h"
 
 
-int ComputeBoolExpr(PExprDataInfo left, PExprDataInfo right, int op);
+PExprDataInfo ComputeExpr(PExprDataInfo left, PExprDataInfo right, int op);
 
 #endif 

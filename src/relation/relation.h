@@ -7,8 +7,13 @@
 
 typedef struct Relation
 {
+    int databaseId;
     int relid;
     int relType;
 }Relation, *PRelation;
+
+#define RelationCompare(rel1, rel2)  (((rel1)->databaseId == (rel2)->databaseId) \
+                                     && ((rel1)->relid == (rel2)->relid))
+
 
 #endif

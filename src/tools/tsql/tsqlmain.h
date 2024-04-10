@@ -16,11 +16,19 @@
 #ifndef HAT_TSQLMAIN_H_H
 #define HAT_TSQLMAIN_H_H
 
+
+
 typedef enum enRunMode 
 {
     TSQL_RUN_COMMAND,
     TSQL_RUN_SINGLE_INPUT,
+    TSQL_RUN_ONLY_CLIENT,
+    TSQL_RUN_ONLY_SERVER,
     TSQL_RUN_INVALID
 }enRunMode;
+
+
+
+int OnlyClientRun(char *command);
 
 #endif

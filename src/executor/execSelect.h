@@ -22,4 +22,6 @@
 
 PTableRowData ExecSelect(PExecState eState);
 
+/* select for update set list */
+PTableRowData ExecUpdateSelect(PExecState eState);
 #endif

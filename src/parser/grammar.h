@@ -55,25 +55,26 @@ extern int yydebug;
     INTO = 265,
     VALUES = 266,
     UPDATE = 267,
-    WHERE = 268,
-    AND = 269,
-    OR = 270,
-    NOT = 271,
-    ORDER = 272,
-    GROUP = 273,
-    LIMIT = 274,
-    OFFSET = 275,
-    AS = 276,
-    BY = 277,
-    IDENT = 278,
-    STRING = 279,
-    INTNUMBER = 280,
-    FLOATNUMBER = 281,
-    LESS_EQ = 282,
-    GREATER_EQ = 283,
-    NOT_EQ = 284,
-    Op = 285,
-    UMINUS = 286
+    SET = 268,
+    WHERE = 269,
+    AND = 270,
+    OR = 271,
+    NOT = 272,
+    ORDER = 273,
+    GROUP = 274,
+    LIMIT = 275,
+    OFFSET = 276,
+    AS = 277,
+    BY = 278,
+    IDENT = 279,
+    STRING = 280,
+    INTNUMBER = 281,
+    FLOATNUMBER = 282,
+    LESS_EQ = 283,
+    GREATER_EQ = 284,
+    NOT_EQ = 285,
+    Op = 286,
+    UMINUS = 287
   };
 #endif
 
@@ -91,7 +92,7 @@ union YYSTYPE
     PList list;
     PNode node;
 
-#line 95 "./parser/grammar.h" /* yacc.c:1909  */
+#line 96 "./parser/grammar.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

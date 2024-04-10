@@ -29,9 +29,9 @@ int ExecCreateTable(PCreateStmt stmt, PPortal portal);
 
 int ExecDropTable(PDropStmt stmt, PPortal portal);
 
-int ExecInsertStmt(PInsertStmt stmt, PPortal portal);
+//int ExecInsertStmt(PInsertStmt stmt, PPortal portal);
 
-int ExecSelectStmt(PSelectStmt stmt, PPortal portal);
+//int ExecSelectStmt(PSelectStmt stmt, PPortal portal);
 
 int OpenTableFile(char *filename, int mode);
 

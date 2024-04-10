@@ -18,7 +18,6 @@
 #include "node.h"
 #include "dataTypes.h"
 
-
 typedef struct CreateStmt
 {
     /* tablename, list of map (column name, column type), other... */
@@ -49,6 +48,15 @@ typedef struct InsertStmt
 	List *attrNameList;
 	List *valuesList;
 }InsertStmt, *PInsertStmt;
+
+typedef struct UpdateStmt
+{
+	NodeType type;
+	PNode relation;			/* rangvar */
+	List *targetlist;		/* ResTarget list */
+	List *fromList;
+	List *whereList;
+}UpdateStmt, *PUpdateStmt;
 
 typedef struct AttrName
 {
@@ -92,9 +100,10 @@ typedef struct SelectStmt
 typedef struct ResTarget
 {
 	NodeType	type;
-	char	   *name;	/* alias name */
+	char	   *name;	/* alias name，列的别名，当列的别名为空时，在解析时会将列的定义名赋值，用于结果的显示 */
 	List	   *indirection;	
 	Node	   *val;	/* column name or expr */
+	Node 	   *setValue;	/* set column = setvalue */
 	int 		all;	/* if ‘*’ ,set 1 , otherwise is 0. */		
 } ResTarget, *PResTarget;
 
@@ -106,8 +115,9 @@ typedef struct ColumnRef
 {
 	NodeType	type;
 	char	   *field;		/* 此处为列的真实名称 */
-	char	   *tableName;
+	char	   *tableName;	/* 引用的表名，可能为别名 */
 	valueType   vt;
+	int 		attrIndex;
 }ColumnRef, *PColumnRef;
 
 /* const value */
@@ -156,6 +166,7 @@ typedef enum A_A_Expr_Op_Type
 	MULTIPLE,		/* * */
 	DIVISIION,		/* / */
 	MOD, 			/* % */
+	BOOLVALUE,		/* 值转为真假值 */
 	Op_Type_MAX 			/* max */
 }A_A_Expr_Op_Type;
 
@@ -191,6 +202,7 @@ typedef struct Alias
 	char	   *aliasname;	
 } Alias, *PAlias;
 
+
 /* from clause relation information struction */
 typedef struct RangeVar
 {
@@ -198,6 +210,7 @@ typedef struct RangeVar
 	char	   *relname;
 	Alias	   *alias;
 } RangeVar, *PRangeVar;
+
 
 /* 根据列名获取在targetlist中的序号 */
 int GetAtrrIndexByName(char *attrName, PList list);

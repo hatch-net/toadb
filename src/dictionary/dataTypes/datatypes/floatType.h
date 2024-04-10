@@ -16,8 +16,6 @@
 #define HAT_FLOAT_TYPE_H_H
 #include "dataTypeProc.h"
 
-/* 当为4 Bytes时, 1bit 符号位， 23bit小数位，小数点后7位，这里为小数6位 */
-#define FLOAT_EPSILON (1e-6)
 
 
 extern DataTypeProcs floatDataTypeProcEntry;

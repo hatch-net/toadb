@@ -14,10 +14,14 @@
 typedef struct ScanPageInfo
 {
     SearchPageInfo groupPageInfo;       /* group search postion, page */
+    PGroupItemData groupItem;           /* current group item */
     PSearchPageInfo searchPageList;     /* data page postion of current search  */
     PPageDataHeader *pageList;          /* group member pages array */
     int *colindexList;                  /* columns index array */
     int pageListNum;                    /* group member page number */
+    
+    int pageReset;                      /* seqscan control reset scan */
+    int isNoSpace;                      /* when getting freespace group, this group has space, don't to switch group id. */
 }ScanPageInfo, *PScanPageInfo;
 
 /*
@@ -35,6 +39,7 @@ typedef struct ScanState
 {
     PTableList tblInfo;
     PScan scanInfo;
+    int rindex;         /* rang table list index, mark scan table, maybe real table is the same, but rindex is special. */
     int columnNum;      /* query column of current table */
     int rowNum;
     PDList rows;        /* storage rowdata which searched. */
@@ -59,8 +64,9 @@ typedef struct RowDataPosition
 typedef struct TableRowDataPosition
 {
     int rowNum;
+    int rindex;                     /* same as ScanState */
     PTableList tblInfo;
-    PRowDataPosition rowDataPosition;       /* array list */
+    PRowDataPosition rowDataPosition[];       /* array list */
 }TableRowDataPosition, *PTableRowDataPosition;
 
 typedef struct ScanTableRowData
@@ -75,11 +81,12 @@ PScanState InitScanState(PTableList tblInfo, PScan scan);
 PScanState GetScanState(PTableList tblInfo, PScanState scanStateHead);
 
 PScanTableRowData TransFormScanRowData(PTableRowData rowData, PScanState scanState);
+int ReleaseRowData(PScanTableRowData scanRowData);
 
-PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTableList tblInfo);
+PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTableList tblInfo, int rindex);
 
 /* 从结查rows 中找到对应列的值 */
-PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef);
+PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef, PAttrDataPosition attrPosData, int rowIndex);
 
 /*
  * 输入值为当前列的值,

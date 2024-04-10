@@ -31,7 +31,7 @@
 #define MEM_DEBUG 1
 #endif 
 
-//#define MEM_MANAGER_SHOW 1
+// #define MEM_MANAGER_SHOW 1
 
 
 /* 
@@ -46,4 +46,15 @@
  * 定义后，则不区分 tableName = tablename
  */
 //#define STRING_IGNORE_CASE 1
+
+/* 
+ * 顺序扫描相关开关 
+ */
+/* 当开关打开时，打印扫描到的item位置 */
+// #define SEQSCAN_STEP_ITEM_POSITION 1
+
+/* 是否需要同步刷盘 */
+extern int config_fsync;
+
+extern int pageNum;
 #endif 

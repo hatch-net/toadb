@@ -19,7 +19,6 @@ PScanState InitScanState(PTableList tblInfo, PScan scan)
     PScanState scanState = NULL;
 
     scanState = (PScanState)AllocMem(sizeof(ScanState));
-    memset(scanState, 0x00, sizeof(ScanState));
     
     if(scan != NULL)
     {
@@ -52,32 +51,60 @@ PScanTableRowData TransFormScanRowData(PTableRowData rowData, PScanState scanSta
     PScanTableRowData scanTblRowData = NULL;
     PTableRowDataPosition tblRowDataPos = NULL;
     PRowDataPosition rowDataPosition = NULL;
+    char *pMem = NULL;
+    int memSize = 0;
 
-    if((NULL == rowData) || (NULL == scanState))
+    if(NULL == rowData)
     {
         return NULL;
     }
 
-    rowDataPosition = (PRowDataPosition)AllocMem(sizeof(RowDataPosition));
+    memSize = sizeof(RowDataPosition) + sizeof(TableRowDataPosition) + sizeof(PRowDataPosition) + sizeof(ScanTableRowData);
+    pMem = AllocMem(memSize);
+
+    rowDataPosition = (PRowDataPosition)pMem;
     rowDataPosition->rowData = rowData;
-    rowDataPosition->scanPostionInfo = scanState->scanPostionInfo;
 
-    tblRowDataPos = (PTableRowDataPosition)AllocMem(sizeof(TableRowDataPosition));
-    tblRowDataPos->tblInfo = scanState->tblInfo;
-    tblRowDataPos->rowDataPosition = rowDataPosition;
+    memSize = sizeof(RowDataPosition);
+    tblRowDataPos = (PTableRowDataPosition)(pMem + memSize);
     tblRowDataPos->rowNum = 1;
+    tblRowDataPos->rowDataPosition[0] = rowDataPosition;    
 
-    scanTblRowData = (PScanTableRowData)AllocMem(sizeof(ScanTableRowData));
+    memSize += sizeof(TableRowDataPosition) + sizeof(PRowDataPosition);
+    scanTblRowData = (PScanTableRowData)(pMem + memSize);
     scanTblRowData->tableNum = 1;       /* only scan maybe on one table. */
-    scanTblRowData->tableRowData = tblRowDataPos;
-    
+    scanTblRowData->tableRowData = tblRowDataPos;    
 
+    if(NULL != scanState)
+    {
+        tblRowDataPos->tblInfo = scanState->tblInfo;
+        tblRowDataPos->rindex = scanState->rindex;
+        rowDataPosition->scanPostionInfo = scanState->scanPostionInfo;
+    }
+    
     return scanTblRowData;
 }
 
-PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTableList tblInfo)
+int ReleaseRowData(PScanTableRowData scanRowData)
+{
+    PTableRowData rowData = NULL;
+
+    if(NULL == scanRowData)
+        return -1;
+
+    rowData = scanRowData->tableRowData->rowDataPosition[0]->rowData;
+
+    if(NULL != rowData)
+        FreeMem(GetAddrByMember(rowData, rowsData, RowData));
+
+    FreeMem(scanRowData);
+    return 0;
+}
+
+PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTableList tblInfo, int rindex)
 {
     PTableRowDataPosition *ptblRowPosition = NULL;
+    PTableRowDataPosition result = NULL;
     int tblIndex = 0;
 
     if((NULL == scanTblRow) || (NULL == tblInfo))
@@ -90,8 +117,8 @@ PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTable
     {   
         if(NULL == *ptblRowPosition)
             break;
-                 
-        if(tblInfo == (*ptblRowPosition)->tblInfo)
+            
+        if((tblInfo == (*ptblRowPosition)->tblInfo) && (rindex == (*ptblRowPosition)->rindex))
         {
             break;
         }
@@ -99,57 +126,72 @@ PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTable
         ptblRowPosition++;
     }
 
+    result = *ptblRowPosition;
     if(tblIndex >= scanTblRow->tableNum)
-        *ptblRowPosition = NULL;
-    return *ptblRowPosition;
+        result = NULL;
+    return result;
 }
-
-
 
 /*
  * getting rowdata, specified colmn infomation.
  */
-PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef)
+PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef colDef, PAttrDataPosition attrPosData, int rowIndex)
 {
     PTableRowData colRowData = NULL;
-    
+    ItemData itemData = {0};
+
     int *colIndexArr = NULL;
     int attrIndex = -1;
     
     int pageno = -1, pageOffset = -1;
     int i = 0;
 
-    if(tblRowPosition->rowNum <= 0)
+    if((rowIndex < 0) || (rowIndex >= tblRowPosition->rowNum))
     {
         return NULL;
     }
 
     /* column index of table metadata. */
-    attrIndex = GetAttrIndex(tblRowPosition->tblInfo, colDef->field);
+    attrIndex = colDef->attrIndex;
     if(attrIndex < 0)
     {
         return NULL;
     }
 
     /* coldata is already readed? */
-    colIndexArr = tblRowPosition->rowDataPosition->scanPostionInfo->colindexList;
-    for(i = 0; i < tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum; i++)
+    colIndexArr = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->colindexList;
+    for(i = 0; i < tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageListNum; i++)
     {
         if(attrIndex == colIndexArr[i])
         {
             /* TODO: alread exist */
-            colRowData = FormColData2RowData(tblRowPosition->rowDataPosition->rowData->columnData[i]);
+            colRowData = FormColData2RowData(tblRowPosition->rowDataPosition[rowIndex]->rowData->columnData[i]);
+
+            if(NULL != attrPosData)
+            {
+                attrPosData->headItem.pageno.pageno = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageList[i]->header.pageNum;
+                attrPosData->headItem.itemOffset = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->searchPageList->item_offset;
+                attrPosData->headItem.itemData = *((PItemData)GET_ITEM(attrPosData->headItem.itemOffset, 
+                                            tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageList[i]));
+            }
             return colRowData;
         }
     }
     
+    /* below code, it maybe run repeatly at one column data, which not in rang table's target list. */
     /* coldata read from page. */
-    if(tblRowPosition->rowDataPosition->scanPostionInfo->pageListNum > 0)
-        pageOffset = tblRowPosition->rowDataPosition->scanPostionInfo->searchPageList->item_offset;
+    if(tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageListNum > 0)
+        pageOffset = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->searchPageList->item_offset;
 
-    pageno = GetPageNoFromGroupInfo(&(tblRowPosition->rowDataPosition->scanPostionInfo->groupPageInfo), attrIndex);
+    pageno = GetPageNoFromGroupInfo(&(tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->groupPageInfo), attrIndex);
 
-    colRowData = GetRowDataFromPageByIndex(tblRowPosition->tblInfo, pageno, pageOffset);
+    colRowData = GetRowDataFromPageByIndex(tblRowPosition->tblInfo, pageno, pageOffset, &itemData);
+    if(NULL != attrPosData)
+    {
+        attrPosData->headItem.itemData = itemData;
+        attrPosData->headItem.pageno.pageno = pageno;
+        attrPosData->headItem.itemOffset = pageOffset;
+    }
 
     return colRowData;
 }

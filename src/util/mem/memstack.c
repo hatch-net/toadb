@@ -17,22 +17,24 @@
 #include "node.h"       
 #include "config_pub.h"
 
+#include "public.h"
+#include "memPool.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "public.h"
 
-
-#define DEBUG_MEM_BARRIER 0xBE
-#define DEBUG_MEM_TYPE_SIZE (sizeof(int))
-#define DEBUG_MEM_BARRIER_SIZE (3 * DEBUG_MEM_TYPE_SIZE)
-
-#define DEBUG_MEM_ADDRESS_ADAPTER(ptr) (((char*)(ptr)) - DEBUG_MEM_BARRIER_SIZE)
-
-#define MM_NewNode(type) (type *)MM_CreateNode(sizeof(type),T_##type)
-
-static PList g_MemList = NULL;
+/* 
+ * 内存上下文的列表，总的内存上下文由g_MemList记录，
+ * 每个列表节点为一个内存上下文；
+ * 
+ * 当前正在使用的内存上下文由g_CurrentContext记录；
+ * 
+ * g_MemValidCheckData是记录内存合法性检查的中间数据；
+ */
+static DList g_MemList = {0};
+static PDList g_headMemList = &g_MemList;
 static PMemContextNode g_CurrentContext = NULL;
 static PMemValidCheckData g_MemValidCheckData = NULL;
 
@@ -49,16 +51,60 @@ static void MemValidCheckMemNode(PMemNode node);
 static void MemValidCheckBlock(char *ptr, int size);
 static int MemCheckFlag(char *ptr, int size);
 
-static PNode MM_CreateNode(int size, NodeType type);
-static PList MM_AppendNode(PList list, PNode node);
+
+static void InitMMContextNode(PMemContextNode context, char *contextName);
 
 /* For debug */
 static void MemMangerShow();
 static void MemContextNodeShow(PMemContextNode context);
 
+void *AllocMemWithPool(unsigned int size, char *file, int line)
+{
+    char *pMem = NULL;
+    int total = size;
+    PMemNode start = NULL;
+
+    /* alloc memNode struct and user size. */
+    //total += MEM_NODE_SIZE;
+    pMem = (char *)AllocFromMemPool(total);
+    if(NULL == pMem)
+    {
+        hat_log("alloc mem %d from pool failure. \n", size);
+        exit(-1);
+    }
+
+    /* not used MemNode wrapper 2024/4/9 */
+    //start = (PMemNode)pMem;
+
+#ifdef MEM_DEBUG
+    /* prev and after */
+    total += DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
+#endif
+
+#ifdef MEM_MANAGER
+    /* memnode is not inserted to context list. */
+    // MemMangerInsert(start, total);
+#endif
+    
+    /* zero user space */
+    //pMem = start->ptr;
+    /* memory strip is already reset by the context. */
+    // memset(pMem, 0x00, size);
+
+    hat_debug("alloc mem %p, pos[%s:%d] \n", pMem, file, line);
+    return (void *)pMem;
+}
+
+int FreeMemWithPool(void *pMem, char *file, int line)
+{
+    if(NULL == pMem)
+        return -1;
+    hat_debug("relase mem %p, pos[%s:%d] \n", pMem, file, line);
+    return ReleaseToMemPool(pMem);
+}
 
 /* common call */
-void *AllocMem(unsigned int size)
+void *AllocMemExt(unsigned int size, char *file, int line)
 {
     char *pMem = NULL;
     int total = size;
@@ -95,7 +141,7 @@ void *AllocMem(unsigned int size)
     size -= DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
     memcpy(pMem+size, start, DEBUG_MEM_BARRIER_SIZE);
 
-    hat_debug("User Memory Alloc[%p] size[%d]\n", start, total);
+    hat_debug("User Memory Alloc[%p] size[%d] [%s][%d]\n", start, total, file, line);
 #endif
 
 #ifdef MEM_MANAGER
@@ -109,83 +155,23 @@ void *AllocMem(unsigned int size)
 }
 
 /* common call */
-int FreeMem(void *pMem)
+int FreeMemExt(void *pMem, char *file, int line)
 {
+    unsigned int size = 0;
+
     if(NULL == pMem)
     {
         return 0;
     }
 
-#if 0
-    pMem -= DEBUG_MEM_BARRIER_SIZE;
-    memset(pMem+DEBUG_MEM_TYPE_SIZE+DEBUG_MEM_TYPE_SIZE, 0x00, DEBUG_MEM_TYPE_SIZE);
-#endif
-
 #ifndef  MEM_MANAGER
+    pMem += DEBUG_MEM_TYPE_SIZE;
+    size = *((unsigned int*)(pMem+DEBUG_MEM_TYPE_SIZE));
+    hat_debug("User Memory free[%p] size[%d] [%s][%d]\n", pMem, size, file, line);
+
     /* while no memory manger */
     free(pMem);
 #endif 
-    return 0;
-}
-
-/* memory manager inner call */
-static void *MM_AllocMem(unsigned int size)
-{
-    char *pMem = NULL;
-
-#ifdef MEM_DEBUG
-    char *start = NULL;
-    int total = size;
-    /* prev and after */
-    size += DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
-#endif
-
-    pMem = (char *)malloc(size);
-    if(NULL == pMem)
-    {
-        hat_log("alloc mem %d failure. \n", size);
-        exit(-1);
-    }
-
-#ifdef MEM_DEBUG
-    start = pMem;
-    total = size;
-
-    /* prev */
-    memset(pMem, DEBUG_MEM_BARRIER, DEBUG_MEM_TYPE_SIZE);
-    pMem += DEBUG_MEM_TYPE_SIZE;
-
-    *((unsigned int*)pMem)= size;
-    pMem += DEBUG_MEM_TYPE_SIZE;
-
-    memset(pMem, DEBUG_MEM_BARRIER, DEBUG_MEM_TYPE_SIZE);
-    pMem += DEBUG_MEM_TYPE_SIZE;
-
-
-    /* after */
-    size -= DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
-    memcpy(pMem+size, start, DEBUG_MEM_BARRIER_SIZE);
-    
-    /* zero user space */
-    memset(pMem, 0x00, size);
-
-    hat_debug("Memory Alloc[%p] size[%d]\n", start, total);
-#endif
-    
-    return (void *)pMem;
-}
-
-/* momory manager inner call */
-static int MM_FreeMem(void *pMem)
-{
-    if(NULL == pMem)
-    {
-        return 0;
-    }
-
-    hat_debug("Memory free address %p\n", pMem);
-    free(pMem);
-
     return 0;
 }
 
@@ -195,33 +181,23 @@ static int MM_FreeMem(void *pMem)
  */
 void MemMangerInit()
 {
-    PMemContextNode MainContext = NewMMContext("MainContext");
+    PMemContextNode MainContext = NULL; 
+    INIT_DLIST_NODE(g_MemList);
 
-    g_MemList = MM_AppendNode(g_MemList, (PNode)MainContext);
+    /* initialize memPool first */
+    InitializeMemPool();
+
+    MainContext = NewMMContext("MainContext");
+    
+    /* first context must be initialize at the beginning before using. */
     g_CurrentContext = MainContext;
+    AddDListTail(&g_headMemList, (PDList)MainContext);
+
+#ifdef MEM_MANAGER_VALID_CHECK
+    g_MemValidCheckData = (PMemValidCheckData)AllocMem(sizeof(MemValidCheckData));
+#endif 
 }
 
-/*
- *
- */
-static PList MM_AppendNode(PList list, PNode node)
-{
-    PListCell tmpCell = NULL;
-
-    tmpCell = (PListCell)MM_AllocMem(sizeof(ListCell));
-    tmpCell->next = NULL;
-    tmpCell->value.pValue = node;
-
-    if(NULL == list)
-    {
-        list = (PList)MM_NewNode(List);
-        list->length = 0;
-    }
-
-    list = AppendCellNode(list, tmpCell);
-
-    return list;
-}
 
 /* 
  * Destory Memory Context Manager.
@@ -230,34 +206,32 @@ static PList MM_AppendNode(PList list, PNode node)
  */
 void MemMangerDestroy()
 {
-    PListCell tmpCell = NULL;
-    PNode node = NULL;
-    char *ptr = NULL;
+    PDList tailNode = g_headMemList->prev;
+    PDList headNode = g_headMemList;
+    PMemContextNode pCxt = NULL;
+    PDList preNode = NULL;
 
-    /* search all list */
-    for(tmpCell = g_MemList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    preNode = tailNode;
+
+    while((preNode != NULL) && (preNode != headNode))
     {
-        PNode node = (PNode)GetCellNodeValue(tmpCell);
-        switch(node->type)
-        {
-            case T_MemContextNode:
-                MemDestroyContextNode((PMemContextNode)node);
-            break;
-            case T_MemNode:
-                MemDestroyMemNode((PMemNode)node);
-            break;
-            default:
-            break;
-        }
+        tailNode = preNode;
+        preNode = preNode->prev;
 
-        MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(tmpCell));
+        pCxt = (PMemContextNode)tailNode;
+        if(T_MemContextNode == pCxt->type)
+        {
+            DelDListNode(&headNode, tailNode);
+            MemDestroyContextNode((PMemContextNode)pCxt);
+        }
     }
 
-    if(NULL != g_MemList)
-        MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(g_MemList));
+    INIT_DLIST_NODE(g_MemList);
 
     if(NULL != g_MemValidCheckData)
-        MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(g_MemValidCheckData));
+        FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(g_MemValidCheckData));
+
+    DestroyMemPool();
 }
 
 /*
@@ -266,11 +240,15 @@ void MemMangerDestroy()
 */
 static void MemMangerInsert(void *ptr, int size)
 {
-    PMemNode context = MM_NewNode(MemNode);
-    context->memSize = size;
-    context->ptr = ptr;
-    g_CurrentContext->memList = MM_AppendNode(g_CurrentContext->memList, (PNode)context);
+    PMemNode mNode = (PMemNode)ptr;
+    PDList head = &(g_CurrentContext->subList);
+    
+    mNode->memSize = size;
+    mNode->type = T_MemNode;
+    INIT_DLIST_NODE(mNode->memList);
 
+    AddDListTail(&head, (PDList)&(mNode->memList));
+    
 #ifdef MEM_MANAGER_VALID_CHECK    
     MemValidCheck();
 #endif 
@@ -286,6 +264,11 @@ PMemContextNode MemMangerSwitchContext(PMemContextNode oldContext)
     return old;
 }
 
+PMemContextNode MemMangerGetCurrentContext()
+{
+    return g_CurrentContext;
+}
+
 /*
  * New memory context, and switch to this new context. 
  * return old memory context. 
@@ -295,7 +278,10 @@ PMemContextNode MemMangerNewContext(char *contextName)
 {
     PMemContextNode old = g_CurrentContext;
     PMemContextNode MainContext = NewMMContext(contextName);
-    g_CurrentContext->memList = MM_AppendNode(g_CurrentContext->memList, (PNode)MainContext);
+    PDList head = &(g_CurrentContext->subList);
+
+    /* MainContext->memList link to parent. */
+    AddDListTail(&head, (PDList)MainContext);
 
     g_CurrentContext = MainContext;
 
@@ -311,8 +297,10 @@ PMemContextNode MemMangerNewContext(char *contextName)
 
 void MemMangerDeleteContext(PMemContextNode preContext, PMemContextNode delContext)
 {
+    PDList head = &(preContext->subList);
+
     /* 先将context 从memory manager List分离 */
-    preContext->memList = DelListNode(preContext->memList, (PNode)delContext);
+    DelDListNode(&head, (PDList)delContext);
 
     /* 释放memory context */
     MemDestroyContextNode(delContext);
@@ -320,57 +308,70 @@ void MemMangerDeleteContext(PMemContextNode preContext, PMemContextNode delConte
 
 static PMemContextNode NewMMContext(char *contextName)
 {
-    PMemContextNode context = MM_NewNode(MemContextNode);
+    PMemPoolContextInfo memPoolContext = NULL;
+    PMemContextNode context = NULL;
+    
+    /* first get a memory context. */
+    memPoolContext = NewPoolMemContext();
 
-    snprintf(context->contextName,  MEM_CONTEXT_NAME_LEN, contextName);
-    context->memList = (PList)NULL;
+    context = &(memPoolContext->contextNode);
+    InitMMContextNode(context, contextName);
 
     return context;
 }
 
+static void InitMMContextNode(PMemContextNode context, char *contextName)
+{
+    snprintf(context->contextName,  MEM_CONTEXT_NAME_LEN, contextName);
+    context->type = T_MemContextNode;
+    INIT_DLIST_NODE(context->memList);
+    context->subList.prev = context->subList.next = &(context->subList);
+}
+
+
 static void MemDestroyContextNode(PMemContextNode context)
 {
-    PListCell tmpCell = NULL;
-    PNode node = NULL;
+    PDList tailNode = NULL;
+    PDList preNode = NULL;
+    PDList headNode = NULL;
+    PMemContextNode pCxt = NULL;
 
     if(NULL == context)
     {
         return ;
     }
 
-    if(NULL == context->memList)
-    {
-        MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(context));
-        return;
-    }
+    tailNode = context->subList.prev;
+    headNode = &(context->subList);
+    preNode = tailNode;
 
-    /* search all list */
-    for(tmpCell = context->memList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    while((preNode != NULL) && (preNode != headNode))
     {
-        PNode node = (PNode)GetCellNodeValue(tmpCell);
-        switch(node->type)
+        tailNode = preNode;
+        preNode = preNode->prev;
+
+        /* search all list */
+        pCxt = (PMemContextNode)tailNode;
+        switch(pCxt->type)
         {
             case T_MemContextNode:
-                MemDestroyContextNode((PMemContextNode)node);
+                MemDestroyContextNode(pCxt);
             break;
             case T_MemNode:
-                MemDestroyMemNode((PMemNode)node);
             break;
             default:
+            hat_error("destroyContext %s addr:%p node type:%d node addr:%p \n", 
+                        context->contextName, context, pCxt->type, pCxt);
             break;
         }
-
-        /* release ListCell struct. */
-        MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(tmpCell));
     }
 
-    /* release List struct */
-    MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(context->memList));
+    hat_debug1("destroyContext %s addr:%p \n", context->contextName, context);
 
-    /* release memory context struct */
-    MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(context));
+    ReleaseMemContext((PMemPoolContextInfo)context);
 }
 
+/* It isnot used when memory pool enable. */
 static void MemDestroyMemNode(PMemNode node)
 {
     if(NULL != node)
@@ -378,11 +379,11 @@ static void MemDestroyMemNode(PMemNode node)
         if(NULL != node->ptr)
         {
             /* release MemNode value. */
-            MM_FreeMem(node->ptr);
+            FreeMem(node->ptr);
         }
 
         /* release PMemNode structure. */
-        MM_FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(node));;
+        FreeMem(DEBUG_MEM_ADDRESS_ADAPTER(node));;
     }
 }
 
@@ -391,23 +392,33 @@ static void MemDestroyMemNode(PMemNode node)
  */
 static void MemValidCheck()
 {
-    PListCell tmpCell = NULL;
-    PNode node = NULL;
+    PDList tailNode = NULL;
+    PDList preNode = NULL;
+    PDList headNode = NULL;
+    PMemContextNode pCxt = NULL;
 
+    /* not initialized */
     if(NULL == g_MemValidCheckData)
-        g_MemValidCheckData = (PMemValidCheckData)MM_AllocMem(sizeof(MemValidCheckData));
+        return;
 
-    /* search all list */
-    for(tmpCell = g_MemList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    tailNode = g_headMemList->prev;
+    headNode = g_headMemList;
+    preNode = tailNode;
+
+    while((preNode != NULL) && (preNode != headNode))
     {
-        PNode node = (PNode)GetCellNodeValue(tmpCell);
-        switch(node->type)
+        tailNode = preNode;
+        preNode = preNode->prev;
+
+        /* search all list */
+        pCxt = (PMemContextNode)tailNode;
+        switch(pCxt->type)
         {
             case T_MemContextNode:
-                MemValidCheckContextNode((PMemContextNode)node);
+                MemValidCheckContextNode(pCxt);
             break;
             case T_MemNode:
-                MemValidCheckMemNode((PMemNode)node);
+                MemValidCheckMemNode((PMemNode)pCxt);
             break;
             default:
             break;
@@ -420,49 +431,53 @@ static void MemValidCheck()
  */
 static void MemValidCheckContextNode(PMemContextNode context)
 {
-    PListCell tmpCell = NULL;
-    PNode node = NULL;
+    PDList tailNode = NULL;
+    PDList preNode = NULL;
+    PDList headNode = NULL;
+    PMemContextNode pCxt = NULL;
     char *ptr = NULL;
 
-    //hat_debug("Memory context[%s] ,address %p\n", context->contextName, context);
-
-    /* memory context is empty. */
-    if(NULL == context->memList)
+    if(NULL == context)
     {
         return ;
     }
 
-    /* search all list */
-    for(tmpCell = context->memList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    tailNode = context->subList.prev;
+    headNode = &(context->subList);
+    preNode = tailNode;
+
+
+    while((preNode != NULL) && (preNode != headNode))
     {
-        PNode node = (PNode)GetCellNodeValue(tmpCell);
-        switch(node->type)
+        tailNode = preNode;
+        preNode = preNode->prev;
+
+        /* search all list */
+        pCxt = (PMemContextNode)tailNode;
+        switch(pCxt->type)
         {
             case T_MemContextNode:
-                MemValidCheckContextNode((PMemContextNode)node);
+                MemValidCheckContextNode(pCxt);
             break;
             case T_MemNode:
-                MemValidCheckMemNode((PMemNode)node);
+                MemValidCheckMemNode((PMemNode)pCxt);
             break;
             default:
             break;
         }
     }
 
-    /* 检查memory context manager使用的内存 */
-    ptr = (char *)context - DEBUG_MEM_BARRIER_SIZE;
-    MemValidCheckBlock((ptr), sizeof(MemContextNode) + DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE);
+    hat_debug1("Memory context[%s] ,address %p\n", context->contextName, context);
 }
 
 static void MemValidCheckMemNode(PMemNode node)
 {
     char *ptr = NULL;
 
-    //hat_debug("Memory Node[%p] , value address[%p] size[%d]\n", node, node->ptr, node->memSize);
-    MemValidCheckBlock(node->ptr, node->memSize);
+    hat_debug1("Memory Node[%p] , value address[%p] size[%d]\n", node, node->ptr, node->memSize);
 
-    ptr = (char *)node - DEBUG_MEM_BARRIER_SIZE;
-    MemValidCheckBlock((ptr), sizeof(MemNode) + DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE);
+    // ptr = (char *)node;
+    // MemValidCheckBlock((ptr), node->memSize);
 }
 
 static void MemValidCheckBlock(char *ptr, int size)
@@ -503,20 +518,6 @@ static void MemValidCheckBlock(char *ptr, int size)
         hat_error("Momery check failure, maybe be damaged. retcode[%d] ptr[%p] size[%d]\n", ret, ptr, size);
 }
 
-static PNode MM_CreateNode(int size, NodeType type)
-{
-    PNode node = MM_AllocMem(size);
-    if(NULL == node)
-    {
-        hat_log("list create, not enough memory.\n");
-        exit(1);
-    }
-    hat_debug("CreateNode node:%p size:%d \n", node, size);
-
-    node->type = type;
-
-    return node;
-}
 
 static int MemCheckFlag(char *ptr, int size)
 {
@@ -542,6 +543,7 @@ static int MemCheckFlag(char *ptr, int size)
         index = *((int*)(ptr));
         if(size != index)
         {
+            hat_log("size not equal record size %d, real size: %d\n", size, index);
             ret = -5;
             break;
         }
@@ -569,32 +571,44 @@ static int MemCheckFlag(char *ptr, int size)
  */
 static void MemMangerShow()
 {
-    PListCell tmpCell = NULL;
-    PNode node = NULL;
-    char *ptr = NULL;
+    PDList tailNode = NULL;
+    PDList preNode = NULL;
+    PDList headNode = NULL;
+    PMemContextNode pCxt = NULL;
 
+    tailNode = g_headMemList->prev;
+    headNode = g_headMemList;
+    preNode = tailNode;
+        
     hat_debug1("MemManagerShow Start----------------------------\n");
-    /* search all list */
-    for(tmpCell = g_MemList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+
+    while((preNode != NULL) && (preNode != headNode))
     {
-        PNode node = (PNode)GetCellNodeValue(tmpCell);
-        switch(node->type)
+        tailNode = preNode;
+        preNode = preNode->prev;
+
+        /* search all list */
+        pCxt = (PMemContextNode)tailNode;
+        switch(pCxt->type)
         {
             case T_MemContextNode:
-                MemContextNodeShow((PMemContextNode)node);
+                MemContextNodeShow(pCxt);
             break;
             default:
             hat_debug1("MemManagerShow top has memnode. \n");
             break;
         }
     }
+
     hat_debug1("MemManagerShow End----------------------------\n");
 }
 
 static void MemContextNodeShow(PMemContextNode context)
 {
-    PListCell tmpCell = NULL;
-    PNode node = NULL;
+    PDList tailNode = NULL;
+    PDList preNode = NULL;
+    PDList headNode = NULL;
+    PMemContextNode pCxt = NULL;
     PMemNode memNode = NULL;
     int memCnt = 0;
 
@@ -603,35 +617,39 @@ static void MemContextNodeShow(PMemContextNode context)
         return ;
     }
 
-    hat_debug1("ContextNode Begin Name:%s Type:%d Addr:%p \n", context->contextName, context->type, DEBUG_MEM_ADDRESS_ADAPTER(context));
+    tailNode = context->subList.prev;
+    headNode = &(context->subList);
+    preNode = tailNode;
+        
+    hat_debug1("ContextNode Begin Name:%s Type:%d Addr:%p \n", context->contextName, context->type, context);
 
-    if(NULL == context->memList)
+    while((preNode != NULL) && (preNode != headNode))
     {
-        hat_debug1("ContextNode END Name:%s Type:%d Addr:%p \n", context->contextName, context->type, DEBUG_MEM_ADDRESS_ADAPTER(context));
-        return;
-    }
+        tailNode = preNode;
+        preNode = preNode->prev;
 
-    /* search all list */
-    for(tmpCell = context->memList->head; tmpCell != NULL; tmpCell = tmpCell->next)
-    {
-        PNode node = (PNode)GetCellNodeValue(tmpCell);
-        switch(node->type)
+        /* search all list */
+        pCxt = (PMemContextNode)tailNode;
+        switch(pCxt->type)
         {
             case T_MemContextNode:
-                MemContextNodeShow((PMemContextNode)node);
+                MemContextNodeShow(pCxt);
             break;
             case T_MemNode:
-                memNode = (PMemNode)node;
+                memNode = (PMemNode)pCxt;
                 memCnt++;
-                hat_debug1("MemNode index:%d Type:%d memSize:%d nodeAddr:%p memAddr:%p \n",
-                        memCnt, memNode->type, memNode->memSize, DEBUG_MEM_ADDRESS_ADAPTER(memNode), memNode->ptr);
+                hat_debug1("MemNode index:%d Type:%d memSize:%d  memAddr:%p \n",
+                        memCnt, memNode->type, memNode->memSize, memNode);
             break;
             default:
+                hat_debug1("unknown node index:%d Type:%d  memAddr:%p \n",
+                        memCnt, pCxt->type,  pCxt);
             break;
         }
     }
 
-    hat_debug1("ContextNode END Name:%s Type:%d Addr:%p node:%d \n", 
-            context->contextName, context->type, DEBUG_MEM_ADDRESS_ADAPTER(context), context->memList->length);
+    hat_debug1("ContextNode END Name:%s Type:%d Addr:%p  \n", 
+            context->contextName, context->type, context);
 }
+
 

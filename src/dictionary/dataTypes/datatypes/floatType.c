@@ -14,13 +14,13 @@
 
 #include "floatType.h"
 #include "dataTypeProc.h"
-#include "math.h"
+#include <math.h>
 
-static HAT_BOOL floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
 static int getfloatSize(PExprDataInfo value);
 
 
@@ -35,7 +35,15 @@ DataTypeProcs floatDataTypeProcEntry =
 	    floatEqualOperator,			/* = */
 	    floatGreaterEqualOperator,		/* >= */
 	    floatGreaterOperator,		/* > */
-        // != 
+        NULL,		/* <> */
+        NULL,		/* + */
+        NULL,		/* - */
+        NULL,			/* + */
+        NULL,			/* - */
+        NULL,		/* * */
+        NULL,		/* / */
+        NULL, 			/* % */
+        NULL            /* bool value */
     },
     getfloatSize
 
@@ -56,72 +64,77 @@ static int getfloatSize(PExprDataInfo value)
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
+    int result = HAT_FALSE;
 
     if((first - seconde) > FLOAT_EPSILON)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result =  HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
+    int result = HAT_FALSE;
 
     first -= seconde;
     if((first > FLOAT_EPSILON) || fabs(first) < FLOAT_EPSILON)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result =  HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
+    int result = HAT_FALSE;
 
     first -= seconde;
     if(fabs(first) < FLOAT_EPSILON)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result =  HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
+    int result = HAT_FALSE;
 
     first -= seconde;
     if((first < -FLOAT_EPSILON) || fabs(first) < FLOAT_EPSILON)
-        return HAT_TRUE;    
-    return HAT_FALSE;
+        result =  HAT_TRUE;    
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
+    int result = HAT_FALSE;
 
     first -= seconde;
     if(first < -FLOAT_EPSILON)
-        return HAT_TRUE;    
-    return HAT_FALSE;
+        result =  HAT_TRUE;    
+    return getDataInfo(&result, VT_INT);
 }

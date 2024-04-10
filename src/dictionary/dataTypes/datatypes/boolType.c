@@ -15,8 +15,8 @@
 
 
 
-static HAT_BOOL boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static HAT_BOOL boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
 static int getboolSize(PExprDataInfo value);
 
 DataTypeProcs boolDataTypeProcEntry =
@@ -29,10 +29,17 @@ DataTypeProcs boolDataTypeProcEntry =
 	    boolEqualOperator,			/* = */
 	    NULL,		            /* >= */
 	    NULL,		            /* > */
-        boolEqualOperator,      // !=  NOT_EQUAL
+        boolNotEqualOperator,      // !=  NOT_EQUAL
+	    NULL,		/* + */
+        NULL,		/* - */
+        NULL,			/* + */
+        NULL,			/* - */
+        NULL,		/* * */
+        NULL,		/* / */
+        NULL, 			/* % */
+        NULL            /* bool value */
     },
     getboolSize
-
 };
 
 static int getboolSize(PExprDataInfo value)
@@ -50,26 +57,43 @@ static int getboolSize(PExprDataInfo value)
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
 
     if(first == seconde)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result = HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static HAT_BOOL boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
 
     if(first != seconde)
-        return HAT_TRUE;
-    return HAT_FALSE;
+        result = HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
+}
+
+/* 
+ * 第一操作数的类型一定是匹配的；
+ * 第二操作数的类型不同时，会转为第一操作数对应的类型 
+*/
+static PExprDataInfo boolValueOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+{
+    int first = leftvalue->data->iData;
+    int seconde = rightvalue->data->iData;
+    int result = HAT_FALSE;
+
+    if(first != seconde)
+        result = HAT_TRUE;
+    return getDataInfo(&result, VT_INT);
 }

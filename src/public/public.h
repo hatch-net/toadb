@@ -21,23 +21,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define hat_debug1 printf 
+#define hat_debug1  
 #define hat_debug 
 #define hat_log printf 
 #define hat_error printf 
 
 /* maybe use offset, meanwhile older compiler.  */
 #define GetOffsetSize(member, type) (unsigned long)(((type *)(0))->member)
+/* 通过成员的地址减去偏移量来获取结构体的地址  */
+#define GetAddrByMember(memberaddr, member, type) (type *)(((char*)(memberaddr)) - offsetof(type,member))
 
-typedef enum HAT_BOOL
-{
-    HAT_NO = 0,
-    HAT_YES = 1,
-    HAT_FALSE = 0,
-    HAT_TRUE = 1,
-    HAT_UNKNOWN
-}HAT_BOOL;
 
+
+#define FLEXIBLE_SIZE 
 
 
 #endif

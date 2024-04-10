@@ -117,27 +117,27 @@ function tpcb() {
     # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
     local sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
     local sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}" > /dev/null
 
     # "SELECT abalance FROM toad_accounts WHERE aid = :aid;\n"
     sql="SELECT abalance FROM toad_accounts WHERE aid = ${aid};"
     sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}" > /dev/null
 
     # "UPDATE toad_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
     sql="UPDATE toad_tellers SET tbalance = tbalance + ${delta} WHERE tid = ${tid};"
     sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}"  > /dev/null
 
     # "UPDATE toad_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
     sql="UPDATE toad_branches SET bbalance = bbalance + ${delta} WHERE bid = ${bid};"
     sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}"  > /dev/null
 
     # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
     sql="INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (${tid}, ${bid}, ${aid}, ${delta}, '${datetime}');"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sql_command="${toad_executor_command} \"${sql}\" "  
+    sh -c "${sql_command}"  > /dev/null
 }
 
 # @args <bid> <tid> <aid> <delta>
@@ -158,17 +158,17 @@ function updatetest() {
     # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
     local sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
     local sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}" > /dev/null
 
     # "SELECT abalance FROM toad_history WHERE aid = :aid;\n"
     sql="SELECT abalance FROM toad_history WHERE aid = ${aid};"
     sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}"  > /dev/null
 
     # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
     sql="INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (${tid}, ${bid}, ${aid}, ${delta}, '${datetime}');"
     sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"
+    sh -c "${sql_command}" > /dev/null
 }
 
 
@@ -210,13 +210,13 @@ function runTest() {
     random_id_delta;
     case $runmode in 
     1)
-        tpcb sbid stid said sdelta
+        tpcb ${sbid} ${stid} ${said} ${sdelta}
     ;;
     2)
-        updatetest sbid stid said sdelta
+        updatetest ${sbid} ${stid} ${said} ${sdelta}
     ;;
     3)
-        onlyselect said
+        onlyselect ${said}
     ;;
     esac
 }
@@ -253,6 +253,22 @@ function printProcess() {
     fi    
 }
 
+function main()
+{
+    while [ $isDone -gt 0 ]; 
+    do 
+        runTest
+        currentTime=$(date +%s)
+        realRunTimes=$(( $currentTime - $beginTimes ))
+
+        printProcess;
+
+        let transactions+=1;
+        isDone=`echo $( isEndtime )`
+        #echo "isdone="$isDone" transaction="$transactions" realRunTimes="$realRunTimes
+    done 
+}
+
 ####################################################
 # run
 ####################################################
@@ -274,18 +290,8 @@ currentTime=$(date +%s)
 realRunTimes=$(( $currentTime - $beginTimes ))
 isDone=`echo $( isEndtime )`
 
-while [ $isDone -gt 0 ]; 
-do 
-    runTest
-    currentTime=$(date +%s)
-    realRunTimes=$(( $currentTime - $beginTimes ))
-
-    printProcess;
-
-    let transactions+=1;
-    isDone=`echo $( isEndtime )`
-    #echo "isdone="$isDone" transaction="$transactions" realRunTimes="$realRunTimes
-done 
+# runTest
+main
 
 echo "---------------------------------------------------------"
 echo "test end............."

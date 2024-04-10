@@ -7,7 +7,7 @@
 #define HAT_TABLES_H_H
 
 
-#include "tfile.h"
+
 #include "tablecom.h"
 #include "nsm.h"
 #include "pax.h"
@@ -21,16 +21,22 @@ typedef enum StorageType
     ST_NUM
 }StorageType;
 
-/* create table file and initialize first page with metadata. */
-int TableCreate(char *fileName, ForkType forkNum);
 
-int TableOpen(PTableList tblInfo, ForkType forkNum);
+
+/* create table file and initialize first page with metadata. */
+int TableCreate(PTableList tblInfo, ForkType forkNum);
+int TableFileInit(PTableList tblInfo);
+
+int TableOpen(PTableList tblInfo, char *tableName, ForkType forkNum);
 
 int TableDrop(PTableList tblInfo);
 
-PPageHeader TableRead(PsgmrInfo smgrInfo, PPageOffset pageoffset, ForkType forkNum);
-int TableWrite(PsgmrInfo smgrInfo, PPageHeader page, ForkType forkNum);
+int TableRead(PTableList tblInfo, PPageOffset pageoffset, ForkType forkNum, char *page);
+int TableWrite(PTableList tblInfo, PPageHeader page, ForkType forkNum);
 
+/* object id update */
+int GetObjectId();
+void SetObjectId(int id);
 
 
 #endif

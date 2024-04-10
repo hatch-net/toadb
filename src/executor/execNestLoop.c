@@ -78,12 +78,6 @@ PTableRowData ExecNestLoopScan(PExecState eState)
     planState = (PNestLoopState)eState->subPlanStateNode;
 
     /* process left and right node */
-    if(NULL == plan->leftplan)
-    {
-        eState->retCode = ExecRetCode_ERR;
-        return NULL;
-    }
-
     for(; ;)
     {
         if(HAT_YES == planState->outerIsEnd)
@@ -163,8 +157,7 @@ PTableRowData ReScanNestLoopNode(PExecState eState)
 {
     PNestLoopState node = (PNestLoopState)eState->subPlanStateNode;
 
-
-
+    /* TODO: nestloop node reset scan */
     return NULL;
 }
 

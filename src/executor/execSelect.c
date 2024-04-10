@@ -17,17 +17,15 @@
 #include "public.h"
 #include "server_pub.h"
 #include "planNode.h"
-#include "execNode.h"
 #include "queryNode.h"
-#include "expreCompute.h"
+#include "execNode.h"
+#include "execExpre.h"
+#include "tuples.h"
 
+#include <string.h>
 
-static int ProcessSelectQual(PNode node, PExecState eState);
-static int ComputeBoolExprNode(PNode node, PExecState eState);
-static int ComputeExpreNode(PNode node, PExecState eState);
-static PExprDataInfo GetExpreOperatorValue(PNode node, PExecState eState);
-static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState);
-static PExprDataInfo GetExprDataConstValue(PNode node, PExecState eState);
+static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl);
+static PExprDataInfo ProcessSetValueExpr(PExecState eState, PNode setValueExpr);
 
 /*
  * 对扫描结果进行条件表达式选择过滤
@@ -41,7 +39,8 @@ PTableRowData ExecSelect(PExecState eState)
     PTableRowData rowData = NULL;
     PListCell tmpCell = NULL;
     PNode qualNode = NULL;
-    int result = 0;
+    PExprDataInfo resultExpr = 0;
+    int bResult = HAT_FALSE;
 
     for(; ;)
     {
@@ -55,8 +54,9 @@ PTableRowData ExecSelect(PExecState eState)
             break;
         }
 
+        /* 没有选持条件,返回当前行 */
         if(NULL == qual)
-            return rowData;
+            break;
 
         /* 记录结果，用于表达式计算 */
         pst->resultRow = (PNode)rowData;
@@ -64,247 +64,197 @@ PTableRowData ExecSelect(PExecState eState)
         eState->subPlanStateNode = (PNode)pst;
 
         /* 查询结果记录在pst中 */
+        bResult = HAT_FALSE;
         for(tmpCell = qual->head; tmpCell != NULL; tmpCell = tmpCell->next)
         {
             PNode qualNode = GetCellNodeValue(tmpCell);
-            result = ProcessSelectQual(qualNode, eState);
+            resultExpr = ExecSelectQual(qualNode, eState);
 
             /* 
-             * 当有多个表达式时，各表达式之间是or的关系，
-             * 只要有一个为真时，最终结果为真
+             * 当有多组表达式时，各表达式之间是or的关系，
+             * 只要有一个为真时，最终结果为真；
+             * 一般只有一组表达式。
             */
-            if(result)
+            if(getDataBool(resultExpr))
+            {
+                bResult = HAT_TRUE;
                 break;
+            }
         }
 
         /* 
          * 表达式为真，返回当前扫描结果; 
          * 表达式为假，获取下一条数据
          */
-        if(result)
-            return rowData;
+        if(HAT_TRUE == bResult)
+            break;
+        
+        if(NULL != rowData)
+        {
+            ReleaseRowData((PScanTableRowData)rowData);
+            rowData = NULL;
+        }
     } 
     
-    return NULL;
+    return rowData;
 }
 
-/* 
- * 计算表达式结果
- * 结果有两种：真，返回大于0的值；假，返回0值；
+/*  
+ * returning type is PExprDataInfo really. 
  */
-static int ProcessSelectQual(PNode node, PExecState eState)
+PTableRowData ExecUpdateSelect(PExecState eState)
 {
-    int result = 0;
-    PNode pnode = eState->subPlanNode;
+    PSelectResult psr = (PSelectResult)eState->subPlanNode;
+    // PSelectState pst = (PSelectState)eState->subPlanStateNode;
 
-    /* 记录当前节点 */
-    eState->subPlanNode = node;
-
-    /* 条件为NULL时，表达式为真 */
-    if(NULL == node)
-        return 1;
-    
-    switch(node->type)
-    {
-        case T_MergerEntry:
-            result = ComputeBoolExprNode(node, eState);
-        break;
-        case T_ExprEntry:
-            result = ComputeExpreNode(node, eState);
-        break;
-        default:
-            hat_error("select qual error node type(%d)\n", node->type);
-        break;
-    }
-
-    eState->subPlanNode = pnode;
-
-    return result;
-}
-
-/*
- * 计算布尔表达式结果 
- * and/or/not 递归计算
- */
-static int ComputeBoolExprNode(PNode node, PExecState eState)
-{
-    PMergerEntry mergerNode = (PMergerEntry)node;
-
-    int result = 0, leftResult = 0, rightResult = 0;
-    int boolType = mergerNode->mergeType;       /* and,or */
-
-    /* 递归获取结果 */
-    if(NULL != mergerNode->lefttree)
-    {
-        leftResult = ProcessSelectQual(mergerNode->lefttree,eState);
-    }
-
-    if(NULL != mergerNode->righttree)
-    {
-        rightResult = ProcessSelectQual(mergerNode->righttree,eState);
-    }
-
-    /* 计算结果 */
-    switch(boolType)
-    {
-        case AND_EXPR:
-            if((leftResult == 0) || (rightResult == 0))
-                result = 0;
-            else 
-                result = 1;
-        break;
-        case OR_EXPR:
-            if((leftResult == 1) || (rightResult == 1))
-                result = 1;
-            else 
-                result = 0;
-        break;
-        case NOT_EXPR:
-            result = leftResult == 1 ? 0 : 1;
-        break;
-        default:
-            hat_error("bool expr not support (%d)\n", boolType);
-        break;
-    }
-    
-    return result;
-}
-
-/*
- * 计算简单表达式结果 
- * =、>=, >, =, < , <=, != ,也会有嵌套表达式，递归计算
- */
-static int ComputeExpreNode(PNode node, PExecState eState)
-{
-    PExprEntry simpleExprNode = (PExprEntry)node;
-    PExprDataInfo leftvalue = NULL, rightvalue = NULL;
-    int exprType = simpleExprNode->op;
-    int result = 0;
-
-    /* 获取表达式两端的值与类型 */
-    if((simpleExprNode->lefttree->type != T_ColumnRef) && (simpleExprNode->lefttree->type != T_ConstValue))
-    {
-        hat_error("Expre left not support qual neither column nor constvalue.\n");
-        return 0;
-    }
-    else
-    {
-        leftvalue = GetExpreOperatorValue(simpleExprNode->lefttree, eState);
-    }
-
-    if((simpleExprNode->righttree->type != T_ColumnRef) && (simpleExprNode->righttree->type != T_ConstValue))
-    {
-        hat_error("Expre right not support qual neither column nor constvalue.\n");
-        return 0;
-    }
-    else
-    {
-        rightvalue = GetExpreOperatorValue(simpleExprNode->righttree, eState);
-    }
-    
-
-    /* 计算表达式结果，调用类型通用计算函数 */
-    result = ComputeBoolExpr(leftvalue, rightvalue, exprType);
-
-    return result;
-}
-
-static PExprDataInfo GetExpreOperatorValue(PNode node, PExecState eState)
-{    
-    PExprDataInfo exprValue = NULL;
-
-    if(NULL == node)
+    /* find set expression result, and replace rowdata column values. */
+    if(FormNewRowsPos(eState, psr->targetList, psr->rtable) < 0)
         return NULL;
 
-    switch(node->type)
-    {
-        case T_ColumnRef:
-            exprValue = GetExprDataColumnValue(node, eState);
-        break;
-        case T_ConstValue:
-            exprValue = GetExprDataConstValue(node, eState);
-        break;
-        default:
-        break;
-    }
-
-    return exprValue;
+    /* new rowData return, type is PTableRowDataWithPos */
+    return eState->scanRowDataLeft;
 }
 
+
 /* 
- * 表达式为列属性名
- * 从该列的查询结果中获取该列的value
+ * travers set value target list
+ * execupdateSelectQual for setvalue qual.
+ * replace attributes values with qual result.
  */
-static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState)
+static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl)
 {
-    PExprEntry simpleExprNode = (PExprEntry)eState->subPlanNode;
-    PSelectState pst = (PSelectState)eState->subPlanStateNode;
-    PTableRowData rowData = (PTableRowData)pst->resultRow;
-    PList rtable = pst->rtable;
-
-    PColumnRef columnRefNode = (PColumnRef)node;
-    PTableRowDataPosition tblRowPosition = NULL;
-    PTableRowData rawcolrow = NULL;
-    PExprDataInfo exprValue = NULL;
-
+    foreachWithSize_define_Head;
     PRangTblEntry rte = NULL;
-    int rindex = -1;
+    PAttrDataPosition attrDataPos = NULL;
+    PExprDataInfo newColExprValue = NULL;
 
-    /* 找到对应的表信息  */
-    if(node == simpleExprNode->lefttree)
-        rindex = simpleExprNode->rindex;
-    else
-        rindex = simpleExprNode->rrindex;
-
-    rte = (PRangTblEntry)GetCellValueByIndex(rtable, rindex);
-    if(NULL == rte)
-    {
-        hat_error("qual Rang table not founded.\n");
-        return NULL;
-    }
-
-    /* 根据表元数据定义，找到对应的表的查询行 */
-    tblRowPosition = GetTblRowDataPosition((PScanTableRowData)rowData, rte->tblInfo);
-    if(NULL == tblRowPosition)
-    {
-        hat_error("select rowdata position not founded.\n");
-        return NULL;
-    }
+    /* rowdata is reslut of pre project logical. */
+    PScanTableRowData scanRowData = (PScanTableRowData)eState->scanRowDataLeft;
+    // PTableRowData targetRowData = (PTableRowData)eState->scanRowDataRight;
     
-    /* 
-     * 根据列的定义，找到对应列的信息进行投影，得到该表列的投影字段数组
-     */
-    rawcolrow = GetColRowData(tblRowPosition, columnRefNode);
-    if(NULL == rawcolrow)
+    PRowColumnData newRowColData = NULL;
+    PTableRowDataWithPos resultRowData = NULL;
+    PTableRowData newColData = NULL;
+
+    AttrDataPosition tempDataPos = {0};
+    PTableRowDataPosition tblRowPosition = NULL;
+    PColumnRef colDef = NULL;
+    int rowIndex = 0;
+
+    PResTarget restarget = NULL;
+    PTargetEntry targetEntry = NULL;
+    PColumnRef colNode = NULL;
+    int colrowIndex = 0;
+    int rowSize = 0;
+
+    if((NULL == targetList) || (NULL == scanRowData) || (NULL == rangTbl))
     {
-        hat_error("column rowdata not founded.\n");
-        return NULL;
-    }    
+        return -1;
+    }
 
-    exprValue = (PExprDataInfo)AllocMem(sizeof(ExprDataInfo));
-    exprValue->type = columnRefNode->vt;
-    exprValue->data = TranslateRawColumnData(rawcolrow, columnRefNode);
-    exprValue->size = rawcolrow->size;       
+    resultRowData = (PTableRowDataWithPos)AllocMem(sizeof(TableRowDataWithPos) + sizeof(PAttrDataPosition) * targetList->length);
+    resultRowData->size = sizeof(TableRowDataWithPos) + sizeof(PAttrDataPosition) * targetList->length;
+    resultRowData->num = 0;
 
-    return exprValue;
+    /* traverse target list */
+    foreachWithSize(targetList, tmpCell, listLen)
+    {
+        targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
+        restarget = (PResTarget)targetEntry->colRef;
+        if(NULL == restarget->setValue)
+            continue;
+    
+        colDef = (PColumnRef)restarget->val;
+        colDef->attrIndex = targetEntry->attrIndex;
+
+        /* 根据target中列对应的表index，找到表的信息记录 */
+        rte = (PRangTblEntry)GetCellValueByIndex(rangTbl, targetEntry->rindex);
+        if(NULL == rte)
+        {
+            hat_error("Rang table not founded.\n");
+            break;
+        }
+
+        newColExprValue = ProcessSetValueExpr(eState, restarget->setValue);
+        if(NULL == newColExprValue)
+        {
+            /* error ocur. */
+            break;
+        }
+
+        /* 根据表元数据定义，找到对应的表的查询行 */
+        tblRowPosition = GetTblRowDataPosition(scanRowData, rte->tblInfo, rte->rindex);
+        if(NULL == tblRowPosition)
+        {
+            hat_error("rowdata position not founded.\n");
+            break;
+        }
+
+        /* 根据target中列的定义，找到对应列的位置信息 */
+        newColData = GetColRowData(tblRowPosition, colDef, &tempDataPos, 0);
+        if(NULL == newColData)
+        {
+            hat_error("column %d rowdata not founded.\n", resultRowData->num);
+            break;
+        } 
+
+        /* replace value in the rowdata. */
+        newRowColData = transFormExpr2RowColumnData(newColExprValue, targetEntry->attrIndex);
+
+        /* only one column */
+        rowSize = sizeof(AttrDataPosition) + sizeof(PRowColumnData) ;
+        attrDataPos = (PAttrDataPosition)AllocMem(rowSize);
+
+        attrDataPos->headItem = tempDataPos.headItem;
+        attrDataPos->rowData.columnData[0] = newRowColData;
+        attrDataPos->rowData.size = newRowColData->size;
+        attrDataPos->rowData.num = 1;
+
+        resultRowData->attrDataPos[resultRowData->num] = attrDataPos;
+        resultRowData->num += 1;
+    }
+
+    if(resultRowData->num != targetList->length)
+    {
+        hat_error("FormNewRowsPos column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
+        return -1;
+    }
+
+    eState->scanRowDataLeft = (PTableRowData)resultRowData;
+
+    return 0;
 }
 
-/* 
- * 表达式为常量
- * 将它组成对应数据类型
+/*
+ * update command , set column = expr;
+ * we compute express value.
  */
-static PExprDataInfo GetExprDataConstValue(PNode node, PExecState eState)
+static PExprDataInfo ProcessSetValueExpr(PExecState eState, PNode setValueExpr)
 {
-    PConstValue pcv = (PConstValue)node;
-    PExprDataInfo exprValue = NULL;
+    PSelectState pst = (PSelectState)eState->subPlanStateNode;
+    PTableRowData scanRowData = eState->scanRowDataLeft;
+    PExprDataInfo exprResult = NULL;
 
-    exprValue = (PExprDataInfo)AllocMem(sizeof(ExprDataInfo));
-    exprValue->type = pcv->vt;
-    exprValue->data = &(pcv->val);
-    exprValue->size = -1;       
+    /* setvalue express type */
+    switch(setValueExpr->type)
+    {
+        case T_ConstValue:
+            /* replace old value with new value */
+            exprResult = TransformConstExprValue((PConstValue)setValueExpr);
+        break;
 
-    if(pcv->isnull)
-        exprValue->size = 0;
+        default:
+        {
+            pst->resultRow = (PNode)scanRowData;
+            exprResult = ExecSelectQual(setValueExpr, eState);
+        }
+        break;
+    }
 
-    return exprValue;
+    return exprResult;
+}
+
+static PTableRowData UpdateRowColumnData()
+{
+    return NULL;
 }

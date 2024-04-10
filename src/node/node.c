@@ -121,26 +121,30 @@ PList AppendNode(PList list, PNode n)
     return list;
 }
 
+/* 
+ *  merge to new list, which different from list1 and list2. 
+ */
 PList MergeList(PList list1, PList list2)
 {
     PListCell tmpCell = NULL;
     PList tempList = NULL;
+    int listLen = 0;
 
-    if(list1 == NULL)
-        return list2;
-
-    if(list2 == NULL)
-        return list1;
-
-    /* double list are not null here. */
-    for(tmpCell = list1->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    if(NULL != list1)
     {
-        tempList = AppendCellNode(tempList, tmpCell);
+        /* double list are not null here. */
+        for(tmpCell = list1->head, listLen = 0; (tmpCell != NULL) && (listLen < list1->length); tmpCell = tmpCell->next, listLen++)
+        {
+            tempList = AppendCellNode(tempList, tmpCell);
+        }
     }
 
-    for(tmpCell = list2->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    if(NULL != list2)
     {
-        tempList = AppendCellNode(tempList, tmpCell);
+        for(tmpCell = list2->head, listLen = 0; (tmpCell != NULL) && (listLen < list2->length); tmpCell = tmpCell->next, listLen++)
+        {
+            tempList = AppendCellNode(tempList, tmpCell);
+        }
     }
 
     return tempList;

@@ -111,6 +111,7 @@ static PNode InitExecNodeSeqScan(PExecState eState)
     PSeqScanState planState = NULL;
     PPlanStateNode psn = NULL;
     PSeqScan plan = NULL;
+    PRangTblEntry rte = NULL;
 
     if(NULL == eState)
         return NULL;
@@ -124,6 +125,7 @@ static PNode InitExecNodeSeqScan(PExecState eState)
     psn->portal = eState->portal;
     psn->plan = (PNode)plan;
     psn->execProcNode = ExecProcSeqScan;
+    psn->execReScanNode = ExecProcReSeqScan;
 
     planState->scanState = InitScanState(((PRangTblEntry)(plan->rangTbl))->tblInfo, NULL);
 
@@ -131,6 +133,9 @@ static PNode InitExecNodeSeqScan(PExecState eState)
     eState->subPlanStateNode = (PNode)planState;
     planState->scanState->scanPostionInfo = InitScanPositionInfo(eState);
 
+    rte = (PRangTblEntry)plan->rangTbl;
+    planState->scanState->rindex = rte->rindex;
+    
     return (PNode)planState;
 }
 
@@ -162,6 +167,12 @@ static PNode InitExecNodeModifyTbl(PExecState eState)
     PModifyTblState planState = NULL;
     PPlanStateNode psn = NULL;
     PModifyTbl plan = NULL;
+    PTableList tblInfo = NULL;
+    PRangTblEntry rte = NULL;
+
+    int scanMemSize = 0;
+    int colNum = 0;
+    char *pMem = NULL;
 
     if(NULL == eState)
         return NULL;
@@ -189,6 +200,43 @@ static PNode InitExecNodeModifyTbl(PExecState eState)
     }
 
     psn->execProcNode = ExecProcModifyTbl;
+
+    /* insert command needed. */
+    if(CMD_INSERT == eState->commandType)
+    {
+        rte = (PRangTblEntry)(plan->rangTbl);
+        tblInfo =  rte->tblInfo;
+        planState->scanState = InitScanState(tblInfo, NULL);
+
+        if(NULL != rte->targetList)
+        {
+            colNum = rte->targetList->length;
+        }
+        
+        if(tblInfo->tableDef->colNum > colNum)
+            colNum = tblInfo->tableDef->colNum;  
+
+        scanMemSize = sizeof(ScanPageInfo) + sizeof(SearchPageInfo) 
+                    + sizeof(PPageDataHeader)*colNum
+                    + sizeof(GroupItemData) + (sizeof(MemberData) + sizeof(PageOffset))*tblInfo->tableDef->colNum;
+
+        pMem = (char *)AllocMem(scanMemSize);
+
+        planState->scanState->scanPostionInfo = (PScanPageInfo)pMem;
+        planState->scanState->scanPostionInfo->searchPageList = (PSearchPageInfo)(pMem + sizeof(ScanPageInfo));
+        planState->scanState->scanPostionInfo->searchPageList->pageNum = PAGE_HEAD_PAGE_NUM+1;
+
+        /* find one new group. */
+        planState->scanState->scanPostionInfo->isNoSpace = HAT_TRUE;
+
+        scanMemSize = sizeof(ScanPageInfo) + sizeof(SearchPageInfo);
+        planState->scanState->scanPostionInfo->pageList = (PPageDataHeader *)(pMem + scanMemSize);
+        planState->scanState->scanPostionInfo->pageListNum = colNum;
+
+        scanMemSize += sizeof(PPageDataHeader)*colNum;
+        planState->scanState->scanPostionInfo->groupItem = (PGroupItemData)(pMem + scanMemSize);
+    }
+
     return (PNode)planState;
 }
 
@@ -209,7 +257,7 @@ static PNode InitExecNodeProjectTbl(PExecState eState)
     psn->commandType = eState->commandType;
     psn->portal = eState->portal;
     psn->plan = (PNode)plan;
-    psn->execProcNode = ExecProcProjectTbl;
+    psn->execProcNode = ExecProcProjectTbl; 
 
     /* process subplan node */
     if(NULL != plan->subplan)
@@ -271,17 +319,51 @@ static PNode InitExecSelect(PExecState eState)
     psn->portal = eState->portal;
     psn->plan = (PNode)plan;
     psn->execProcNode = ExecSelectResultNode;
+    
+    planState->rtable = plan->rtable;
 
     /* process subplan node */
     if(NULL != plan->subplan)
     {
         eState->subPlanNode = (PNode)plan->subplan;
-        planState->subplanState = InitExecNode(eState);   
-        planState->rtable = plan->rtable;    
+        planState->subplanState = InitExecNode(eState);       
     }
 
     return (PNode)planState;
 }
+
+
+static PNode InitExecSelectNewValue(PExecState eState)
+{
+    PSelectState planState = NULL;
+    PPlanStateNode psn = NULL;
+    PSelectResult plan = NULL;
+
+    if(NULL == eState)
+        return NULL;
+
+    plan = (PSelectResult)eState->subPlanNode;
+
+    planState = NewNode(SelectState);
+    psn = (PPlanStateNode)planState;
+
+    psn->commandType = eState->commandType;
+    psn->portal = eState->portal;
+    psn->plan = (PNode)plan;
+    psn->execProcNode = ExecSelectNewValue;
+    
+    planState->rtable = plan->rtable;
+
+    /* process subplan node */
+    if(NULL != plan->subplan)
+    {
+        eState->subPlanNode = (PNode)plan->subplan;
+        planState->subplanState = InitExecNode(eState);       
+    }
+
+    return (PNode)planState;
+}
+
 
 PNode InitExecNode(PExecState eState)
 {
@@ -319,6 +401,9 @@ PNode InitExecNode(PExecState eState)
         break;
         case T_SelectResult:
             node = InitExecSelect(eState);
+        break;
+        case T_SelectNewValue:
+            node = InitExecSelectNewValue(eState);
         break;
         default:
             node = NULL;

@@ -71,18 +71,23 @@ PTableRowData SeqScanRawRow(PTableList tbl, PScanState tblScan)
         }
 
         tblScan->pageIndex++;
-        FreeMem(tblScan->page);
+        ReleasePage(tblScan->page);
         tblScan->page = NULL;
     } while (1);
 
      /* second get row data */
     rawrow = DeFormRowData(page, tblScan->pageOffset);
-    if(NULL != rawrow)
+    if(NULL == rawrow)
+    {
+        ReleasePage(tblScan->page);
+        tblScan->page = NULL;
+    }
+    else 
     {
         /* notice: here size is include column pointer, must be except from pageOffset. */
         tblScan->pageOffset += rawrow->size - rawrow->num * sizeof(PRowColumnData);
     }
-
+    
     return rawrow;
 }
 
@@ -144,6 +149,7 @@ ENDONE:
     return rawrow;
 }
 
+#if 0
 int ScanTable(PTableList tbl, PScanState tblScan)
 {
     int num =0; 
@@ -153,8 +159,9 @@ int ScanTable(PTableList tbl, PScanState tblScan)
     PGroupItemData groupItem = NULL;
     PSearchPageInfo groupSearchPage;
     PPageDataHeader *pagelist = NULL;
+    int found = 0;
 #ifdef DEBUG_GROUP_SCAN    
-    int grouprownum = 0, groupcount = 0;;
+    int grouprownum = 0, groupcount = 0;
 #endif 
 
     if(NULL == tbl || NULL == tblScan)
@@ -165,6 +172,8 @@ int ScanTable(PTableList tbl, PScanState tblScan)
     
     groupSearchPage = &(tblScan->scanPageInfo.groupPageInfo);
     memset(groupSearchPage, 0x00, sizeof(SearchPageInfo));
+    
+    groupItem = tblScan->scanPageInfo.groupItem;
 
     /*
      *  table group  search item per page, if NULL when the end of file. 
@@ -174,8 +183,8 @@ int ScanTable(PTableList tbl, PScanState tblScan)
         /* find one group, until return NULL when reach the end of group file. */
         if(NULL == groupItem)
         {
-            groupItem = GetGroupInfo(tbl, groupSearchPage);
-            if(NULL == groupItem)
+            found = GetGroupInfo(tbl, groupSearchPage, groupItem);
+            if(found <= 0)
                 break; 
 #ifdef DEBUG_GROUP_SCAN                
             grouprownum = 0;
@@ -251,13 +260,46 @@ int ScanOneTblRows(char *tblName, PScan scan)
 
     return ret;
 }
-
+#endif 
 
 PTableRowData ExecSeqscanNode(PExecState eState)
 {
     return SeqscanNext(eState);
 }
 
+int ExecReSeqScan(PExecState eState)
+{
+    int pageNum = 0;
+    PPageDataHeader *pagelist = NULL;
+
+    PSeqScanState seqScanStateNode = (PSeqScanState)eState->subPlanStateNode;
+    PScanState tblScan = seqScanStateNode->scanState;
+
+    PSearchPageInfo groupSearchInfo = &(tblScan->scanPostionInfo->groupPageInfo);
+
+    /* reset group search infomation */
+    if(NULL != groupSearchInfo->page)
+    {
+        ReleasePage(groupSearchInfo->page);
+        groupSearchInfo->page = NULL;
+        
+        groupSearchInfo->item_offset = 0;
+        groupSearchInfo->pageNum = PAGE_HEAD_PAGE_NUM+1;
+        groupSearchInfo->group_id = 0;
+    }
+
+    /* reset page list infomation */
+    pageNum = tblScan->scanPostionInfo->pageListNum;
+    pagelist = tblScan->scanPostionInfo->pageList;
+
+    if(NULL != pagelist)
+    {
+        ReleasePageList(pagelist, pageNum);
+        tblScan->scanPostionInfo->pageReset = HAT_TRUE;
+    }
+
+    return 0;
+}
 
 PTableRowData ExecSeqscanNodeEnd(PExecState eState)
 {
@@ -274,8 +316,11 @@ PTableRowData SeqscanNext(PExecState eState)
     PTableRowData rawRow = NULL;
     PPageDataHeader *pagelist = NULL;
 
+    PSeqScan plan = (PSeqScan)eState->subPlanNode;
     PSeqScanState seqScanStateNode = (PSeqScanState)eState->subPlanStateNode;
     PScanState tblScan = seqScanStateNode->scanState;
+
+    int found = 0;
 
     if(NULL == tblScan->scanPostionInfo)
     {
@@ -285,23 +330,22 @@ PTableRowData SeqscanNext(PExecState eState)
 
     pageNum = tblScan->scanPostionInfo->pageListNum;
     pagelist = tblScan->scanPostionInfo->pageList;
+    found = 1 - tblScan->scanPostionInfo->pageReset;
 
     do
     {
         /* maybe first time, or next group. */
-        if (NULL == pagelist)
+        if (found <= 0)
         {
             /*
             * page list of per group, every attr will has multiple pages.
             */
-            pagelist = GetGroupMemberPagesOpt(tblScan->tblInfo, 
+            found = GetGroupMemberPagesOpt(tblScan->tblInfo, 
                                             tblScan->scanPostionInfo);
-            if (NULL == pagelist)
+            if (found <= 0)
                 break;
 
-            /* record search page list */
-            tblScan->scanPostionInfo->pageList = pagelist;
-            tblScan->scanPostionInfo->searchPageList = (PSearchPageInfo)AllocMem(pageNum * sizeof(SearchPageInfo));
+            tblScan->scanPostionInfo->pageReset = found;
         }
 
         /* search row from group pages. and all attributes form one row. */
@@ -314,15 +358,10 @@ PTableRowData SeqscanNext(PExecState eState)
         }
 
         /* this group completed to scanning, then release postion infomation. */
-        ReleasePageList(pagelist, pageNum);
-        pagelist = NULL;
+        ReleasePageList(pagelist, pageNum);         
 
-        if(NULL != tblScan->scanPostionInfo->searchPageList)
-        {
-            FreeMem(tblScan->scanPostionInfo->searchPageList);
-            tblScan->scanPageInfo.searchPageList = NULL;
-        }
-    }while(NULL == pagelist);
+        found = HAT_FALSE;
+    }while(found <= 0);
 
     return rawRow;
 }
@@ -356,6 +395,10 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
     for(index = 0; index < tblScan->scanPostionInfo->pageListNum; index++)
     {
         tblScan->scanPostionInfo->searchPageList[index].page = tblScan->scanPostionInfo->pageList[index];
+
+        if(tblScan->scanPostionInfo->pageReset == HAT_TRUE)
+            tblScan->scanPostionInfo->searchPageList[index].item_offset = 0;
+
         rawcolrow[index] = GetRowDataFromPage(tbl, &(tblScan->scanPostionInfo->searchPageList[index]));
         if(NULL == rawcolrow[index])
         {
@@ -363,10 +406,12 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
         }
     }
 
+    if(tblScan->scanPostionInfo->pageReset == HAT_TRUE)
+        tblScan->scanPostionInfo->pageReset = HAT_FALSE;
+
     /* error or end ocur */
     if(index != tblScan->scanPostionInfo->pageListNum)
     {
-        rawrow = NULL;
         goto END;
     }
 
@@ -378,21 +423,14 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
     else
     {
         rawrow = rawcolrow[0];
-        goto ENDONE;
     }
+     
+    return (PTableRowData)TransFormScanRowData(rawrow, tblScan);
 END:
     /* error ocur */
-    for(index = 0; index < tblScan->scanPostionInfo->pageListNum; index++)
-    {
-        if(NULL != rawcolrow[index])
-            FreeMem(rawcolrow[index]);
-    }
-    
-    //FreeMem(rawcolrow);
-
-ENDONE:
-        
-    return (PTableRowData)TransFormScanRowData(rawrow, tblScan);
+    if(NULL != rawcolrow)
+        FreeMem(rawcolrow);
+    return NULL;
 }
 
 /* 
@@ -408,9 +446,11 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     PScanPageInfo scanPositionInfo = NULL;
 
     PList targetList = seqScanPlaneNode->targetList;
-    PListCell tmpCell = NULL;
+    foreachWithSize_define_Head;
     int colIndex = 0;
-
+    int colNum = 0;
+    int memScan = 0, colindexSize = 0, groupItemSize = 0;
+    int searchPageInfoSize = 0, pageListSize = 0;
 
     if((NULL == tblScan->tblInfo) || (NULL == targetList))
     {
@@ -418,11 +458,31 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
         return NULL;
     }
 
-    scanPositionInfo = (PScanPageInfo)AllocMem(sizeof(ScanPageInfo));
+    colNum = tblScan->tblInfo->tableDef->colNum;
+    /* scanPositionInfo */
+    memScan = sizeof(ScanPageInfo);
+    
+    /* colindexList */
+    colindexSize = sizeof(int) * colNum; 
+
+    /* searchPageList which space is over or equal real needed. */
+    searchPageInfoSize = sizeof(SearchPageInfo) * colNum;
+
+    /* pageList, num same to searchPageInfo */
+    pageListSize = sizeof(PPageDataHeader) * colNum;
+
+    /* groupItem */
+    groupItemSize = sizeof(GroupItemData) 
+                    + (sizeof(MemberData) + sizeof(PageOffset)) * colNum;
+
+    scanPositionInfo = (PScanPageInfo)AllocMem(
+                                memScan + colindexSize 
+                                + searchPageInfoSize + pageListSize 
+                                + groupItemSize);
     
     /* Column list we want will be initialize. */
-    scanPositionInfo->colindexList = (int *)AllocMem(sizeof(int)*targetList->length);
-    for(tmpCell = targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
+    scanPositionInfo->colindexList = (int *)((char*)scanPositionInfo + memScan);
+    foreachWithSize(targetList, tmpCell, listLen)
     {
         PTargetEntry targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
         
@@ -438,6 +498,31 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     } 
 
     scanPositionInfo->pageListNum = colIndex;
+    if(colIndex > colNum)
+    {
+        hat_error("init pagelist, request %d ,but table only %d columns.\n", colIndex, colNum);
+        return NULL;
+    }
+
+    /* searchPageInfo space */
+    memScan += colindexSize;
+    scanPositionInfo->searchPageList = (PSearchPageInfo)((char*)scanPositionInfo + memScan);
+
+    memScan += searchPageInfoSize;
+    scanPositionInfo->pageList = (PPageDataHeader *)((char*)scanPositionInfo + memScan);
+    
+    /* 
+     * group item save space. 
+     * total size of groupitemdata+ N * (memberdata,pageoffset)
+     */
+    memScan += pageListSize;
+    scanPositionInfo->groupItem = (PGroupItemData)((char*)scanPositionInfo + memScan);
+
+    /* 
+     * initialize member values.
+     */
+    scanPositionInfo->groupPageInfo.pageNum = PAGE_HEAD_PAGE_NUM+1;
+    scanPositionInfo->pageReset = HAT_TRUE;
 
     return scanPositionInfo;
 }

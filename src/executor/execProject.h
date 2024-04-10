@@ -21,6 +21,8 @@
 
 PTableRowData ExecTableProject(PExecState eState);
 
+PTableRowData ExecTableUpdateProject(PExecState eState);
+
 PTableRowData ExecTableQuery(PExecState eState);
 
 

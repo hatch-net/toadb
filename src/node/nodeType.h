@@ -29,6 +29,7 @@ typedef enum NodeType
     T_ColumnDef,
 	T_DropStmt,
 	T_InsertStmt,
+	T_UpdateStmt,
 	T_AttrName,
 	T_ValuesData,
 	T_SelectStmt,
@@ -58,7 +59,8 @@ typedef enum NodeType
 	T_ProjectTbl,
 	T_QueryTbl,
 	T_SelectResult,
-
+	T_SelectNewValue,
+	
 	/* executor nodes */
 	T_PlanState,
 	T_NestLoopState,

@@ -8,7 +8,7 @@
 #include "tablecom.h"
 
 
-#pragma push(pack(1))
+#pragma pack(push, 1)
 
 #define MAX_ROW_PER_GROUP   ((PAGE_MAX_SIZE/(MIN_ROW_SIZE))&0xFFFFFF00)
 
@@ -27,6 +27,7 @@ typedef struct GroupPageInfo
 
 #define FIRST_GROUP_ID      1
 #define INVALID_GROUP_ID    0
+
 
 /* 
  * table file format
@@ -61,6 +62,12 @@ typedef struct GroupItem
     long long groupid;    /* todo: */
 }GroupItem, *PGroupItem;
 
+typedef struct MemberDataItem
+{
+    int colIndex;       /* record column index, while alter table command to change. */
+    PageOffset pageno;
+}MemberDataItem, *PMemberDataItem;
+
 typedef struct MemberData
 {
     int colIndex ;
@@ -68,11 +75,10 @@ typedef struct MemberData
     /* always is 1. in the future, it will change. */
     int memNum;
 
-    /* TODO: head is null, while link head */
-    PageOffset member[FLEXIBLE_SIZE];   
+    PageOffset member[FLEXIBLE_SIZE];       // TODO: MemberDataItem member[FLEXIBLE_SIZE];   
 }MemberData, *PMemberData;
 
 
-#pragma pop(pack(1))
+#pragma pack(pop)
 
 #endif

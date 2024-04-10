@@ -18,7 +18,7 @@
 dir=`pwd`
 toadb_command="/home/senllang/Dev/toadb/src/tools/tsql/toadsql";
 toadb_datadir="/home/senllang/toadbtest/"
-result_out="${dir}/result.log"
+result_out="/tmp/result.log"
 
 toad_executor_command="${toadb_command} -D ${toadb_datadir} -C"
 
@@ -72,6 +72,7 @@ function testMultiFromClause()
     excuteSql "insert into course values(1,'e'),(2,'h'),(3,'f'),(4,'o');"
     excuteSql "insert into timetable values(1,1,1),(2,3,2),(3,2,1),(4,3,4);"
 
+    excuteSql "select * from student,teacher,course;"
     excuteSql "select tid,sid,cid from student,teacher,course;"
     excuteSql "select * from student,teacher,course,timetable where timetable.tsid=student.sid;"
     
@@ -80,6 +81,23 @@ function testMultiFromClause()
     excuteSql "select * from teacher a,teacher b where a.sid=b.tid and a.sid >= a and b.tid <=4;"
     excuteSql "select * from teacher a,student b where a.id=b.id;"
 
+}
+
+function testUpdateStmt()
+{
+    excuteSql "update student set sname='lilei1' where sid=1;"
+    excuteSql "update student set sname='wangmin' where sid=2;"
+    excuteSql "update student set sname='hanmeimei301' where sid=3;"
+    excuteSql "update student set sname='hanmeimei3001' where sid=3;"
+    excuteSql "update student set sname='hanmeimei31' where sid=3;"
+    excuteSql "select * from student;"
+
+    excuteSql "update teacher set tname='wangxiaohua11' where tid=1;"
+    excuteSql "update teacher set tname='zhangduoduo22' where tid=2;"
+    excuteSql "update teacher set tname='shixiaodong33' where tid=3;"
+    excuteSql "update teacher set tname='shixiaodong333' where tid=3;"
+    excuteSql "update teacher set tname='shixiaodong3' where tid=3;"
+    excuteSql "select * from teacher;"
 }
 
 function createAll()
@@ -92,6 +110,7 @@ function TestAll()
 {
     testSimple;
     testMultiFromClause;
+    testUpdateStmt;
 }
 
 function restoreAll()
@@ -104,7 +123,7 @@ function excutorTest()
 {
     createAll;
     TestAll;
-    restoreAll;
+    # restoreAll;
 }
 
 excutorTest;

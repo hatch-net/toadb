@@ -95,8 +95,9 @@ typedef struct ExprEntry
 typedef struct TargetEntry
 {
     NodeType	type;
-    PNode       colRef;
+    PNode       colRef;     /* resTarget Node */
     int         rindex;
+    int         attrIndex;
 }TargetEntry, *PTargetEntry;
 
 

@@ -7,11 +7,11 @@
 
 #include "tablecom.h"
 
-#pragma push(pack(1))
+#pragma pack(push, 1)
 
 
 
 
-#pragma po(pack(1))
+#pragma pack(pop)
 
 #endif
