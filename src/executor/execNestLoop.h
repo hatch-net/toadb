@@ -9,6 +9,12 @@
 #include "tables.h"
 #include "node.h"
 
+typedef struct ScanTableRowData *PScanTableRowData;
+typedef struct NestLoopData
+{
+    PScanTableRowData scanTableRow;     /* columns data array */
+}NestLoopData, *PNestLoopData;
+
 PNode ExecInitNestLoopNode(PExecState eState);
 
 PTableRowData ExecNestLoopNode(PExecState eState);

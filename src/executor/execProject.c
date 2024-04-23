@@ -24,9 +24,33 @@
 #include <string.h>
 
 
-static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl);
-static PTableRowDataWithPos FetchTargetColumnsPos(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl);
+static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl, PProjectStateData pjData);
+// static PTableRowDataWithPos FetchTargetColumnsPos(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl);
 
+PProjectStateData InitProjectData(int columnNum)
+{
+    PProjectStateData pjData = NULL;
+
+    char *pMem = NULL;
+    int rawColsize = 0;
+    int rowDataSize = 0;
+
+    rawColsize = sizeof(PRowColumnData) * columnNum;
+    rowDataSize = rawColsize + sizeof(RowData);
+
+    pMem = AllocMem(sizeof(ProjectStateData) + rawColsize + rowDataSize);
+    pjData = (PProjectStateData)pMem;
+
+    /* memory of column rows is start from sizeof(ProjectStateData). */
+    rowDataSize = sizeof(ProjectStateData);
+    pjData->rawcolrow = (PRowColumnData *)(pMem + rowDataSize);
+
+    /* memory of column rows is start from the position of two pre structure. */
+    rowDataSize += rawColsize;
+    pjData->rowData = (PRowData)(pMem + rowDataSize);
+
+    return pjData;
+}
 
 /* 
  * project logical 
@@ -61,10 +85,11 @@ PTableRowData ExecTableProject(PExecState eState)
     eState->scanRowDataLeft = rowData;
 
     /* transform column data matching targetlist. */
-    rowData = FetchTargetColumns((PScanTableRowData)rowData, plan->targetList, plan->rtable);
+    rowData = FetchTargetColumns((PScanTableRowData)rowData, plan->targetList, plan->rtable, planState->prjData);
     return rowData;
 }
 
+#if 0
 /* 
  * project logical 
  * tuple position will be saved for update command;
@@ -103,6 +128,8 @@ PTableRowData ExecTableUpdateProject(PExecState eState)
     return rowData;
 }
 
+#endif 
+
 /*
  * There will be query all rows that we want.
  * all rows send to portal when found one.
@@ -134,6 +161,8 @@ PTableRowData ExecTableQuery(PExecState eState)
     {
         eState->subPlanNode = (PNode)plan->subplan;
         eState->subPlanStateNode = (PNode)planState->subplanState;
+
+        /* rowData type is PRowData at fact. */
         rowData = ExecNodeProc(eState);
         if(NULL == rowData)
         {
@@ -142,7 +171,7 @@ PTableRowData ExecTableQuery(PExecState eState)
         }
 
         /* send to portal */
-        SendToPort(&(planState->stateNode), rowData);
+        SendToPort(&(planState->stateNode), &(((PRowData)rowData)->rowsData));
 
         rowNum++;
     }
@@ -158,24 +187,24 @@ PTableRowData ExecTableQuery(PExecState eState)
  * fetch row data, which column matching targetlist. 
  * 两个表的查询结果行，要根据target中的列信息，将行数据投影成一个新的结果行。
  */
-static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl)
+static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList targetList, PList rangTbl, PProjectStateData pjData)
 {
-    PTableRowData resultRowData = NULL;
-    PTableRowData *rawcolrow = NULL;
+    PRowColumnData *rawcol = NULL;
 
     PTableList tblInfo = NULL;
     PTableRowDataPosition tblRowPosition = NULL;
     int colrowIndex = 0;
+    int found = 0;
 
     PListCell tmpCell = NULL;
     PRangTblEntry rte = NULL;
 
-    if((NULL == targetList) || (NULL == scanTblRowInfo) || (NULL == rangTbl))
+    if((NULL == targetList) || (NULL == scanTblRowInfo) || (NULL == rangTbl) || (NULL == pjData))
     {
         return NULL;
     }
 
-    rawcolrow = (PTableRowData *)AllocMem(sizeof(PTableRowData) * targetList->length);
+    rawcol = pjData->rawcolrow;
 
     for(tmpCell = targetList->head; tmpCell != NULL; tmpCell = tmpCell->next)
     {
@@ -201,8 +230,8 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
         }
 
         /* 根据target中列的定义，找到对应列的信息进行投影，得到该表列的投影字段数组 */
-        rawcolrow[colrowIndex] = GetColRowData(tblRowPosition, colDef, NULL, 0);
-        if(NULL == rawcolrow[colrowIndex])
+        rawcol[colrowIndex] = GetColRowDataEx(tblRowPosition, colDef, NULL, 0, &found, HAT_TRUE);
+        if(NULL == rawcol[colrowIndex])
         {
             hat_error("column %d rowdata not founded.\n", colrowIndex);
             break;
@@ -213,16 +242,19 @@ static PTableRowData FetchTargetColumns(PScanTableRowData scanTblRowInfo, PList 
 
     if(colrowIndex == targetList->length)
     {
-        resultRowData = FormCol2RowData(rawcolrow, colrowIndex);
+        FormCol2RowDataEx(rawcol, colrowIndex, pjData->rowData);
     }
     else
     {
         hat_error("column %d rowdata, and target request %d column, not equality.\n", colrowIndex, targetList->length);
     }
 
-    return resultRowData;
+    return (PTableRowData)(pjData->rowData);
 }
 
+
+
+#if 0
 /* 
  * fetch row data, which column matching targetlist. 
  * 两个表的查询结果行，要根据target中的列信息，将行数据投影成一个新的结果行。
@@ -302,3 +334,4 @@ static PTableRowDataWithPos FetchTargetColumnsPos(PScanTableRowData scanTblRowIn
 
     return resultRowData;
 }
+#endif 

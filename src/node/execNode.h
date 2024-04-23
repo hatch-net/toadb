@@ -21,6 +21,9 @@
 #include "planNode.h"
 #include "tables.h"
 #include "seqscan.h"
+#include "execProject.h"
+#include "execSelect.h"
+#include "execNestLoop.h"
 
 typedef struct ExecState *PExecState;
 typedef PTableRowData (*execProcNodeFunc)(PExecState eStat);
@@ -33,6 +36,7 @@ typedef struct PlanStateNode
     PPortal     portal;
     execProcNodeFunc execProcNode;
     execProcNodeFunc execReScanNode;
+    execProcNodeFunc execEndProcNode;
 }PlanStateNode, *PPlanStateNode;
 
 typedef struct PlanState
@@ -55,7 +59,7 @@ typedef struct NestLoopState
     int         outerIsEnd;
     int         innerNeedNew;
     int         innerIsEnd;
-
+    PNestLoopData nestloopData;
 }NestLoopState, *PNestLoopState;
 
 typedef struct SeqScanState
@@ -86,6 +90,7 @@ typedef struct ProjectTblState
     PNode       subplanState;
     PScanState scanState;
     PNode       resultRow;       /* left查询结果，实际为rowdata/PTableRowDataWithPos指针，这里为了不引用，转为PNode类型 */
+    PProjectStateData prjData;
 }ProjectTblState, *PProjectTblState;
 
 
@@ -107,6 +112,8 @@ typedef struct SelectState
     PScanState scanState;
     PNode       resultRow;       /* left查询结果，实际为rowdata指针，这里为了不引用，转为PNode类型 */
     PList       rtable;
+
+    PSelectExpreData selectExpreData; 
 }SelectState, *PSelectState;
 
 #endif

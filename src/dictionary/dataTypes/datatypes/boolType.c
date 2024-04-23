@@ -15,8 +15,8 @@
 
 
 
-static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
 static int getboolSize(PExprDataInfo value);
 
 DataTypeProcs boolDataTypeProcEntry =
@@ -57,7 +57,7 @@ static int getboolSize(PExprDataInfo value)
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
@@ -65,14 +65,14 @@ static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo ri
 
     if(first == seconde)
         result = HAT_TRUE;
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
@@ -80,14 +80,14 @@ static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo
 
     if(first != seconde)
         result = HAT_TRUE;
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo boolValueOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo boolValueOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int first = leftvalue->data->iData;
     int seconde = rightvalue->data->iData;
@@ -95,5 +95,5 @@ static PExprDataInfo boolValueOperator(PExprDataInfo leftvalue, PExprDataInfo ri
 
     if(first != seconde)
         result = HAT_TRUE;
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }

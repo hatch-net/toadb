@@ -15,6 +15,7 @@
 #ifndef HAT_TFILE_H_H
 #define HAT_TFILE_H_H
 
+#include "public_types.h"
 #include "smgr.h"
 
 
@@ -35,8 +36,8 @@ PFileHandle CreateFile(char *filename, int mode);
 PFileHandle OpenFile(char *filename, int mode);
 int DeleteTableFile(char *filename);
 
-int FileReadPage(PFileHandle fd, char *page, int offset, int size);
-int FileWritePage(PFileHandle fd, int offset, int size, char *pageBuf);
+int FileReadPage(PFileHandle fd, char *page, INT64 offset, int size);
+int FileWritePage(PFileHandle fd, INT64 offset, int size, char *pageBuf);
 int FileSync(PFileHandle fd);
 int FileClose(PFileHandle fd);
 

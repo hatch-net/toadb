@@ -15,7 +15,7 @@
 #include "valueScan.h"
 #include "execNestLoop.h"
 #include "execProject.h"
-
+#include "execSelect.h"
 
 #define hat_log printf 
 #define debug 
@@ -170,7 +170,7 @@ static PNode InitExecNodeModifyTbl(PExecState eState)
     PTableList tblInfo = NULL;
     PRangTblEntry rte = NULL;
 
-    int scanMemSize = 0;
+    int scanMemSize = 0, rowDataSize = 0;
     int colNum = 0;
     char *pMem = NULL;
 
@@ -201,41 +201,42 @@ static PNode InitExecNodeModifyTbl(PExecState eState)
 
     psn->execProcNode = ExecProcModifyTbl;
 
-    /* insert command needed. */
-    if(CMD_INSERT == eState->commandType)
+    rte = (PRangTblEntry)(plan->rangTbl);
+    tblInfo = rte->tblInfo;
+    planState->scanState = InitScanState(tblInfo, NULL);
+
+    if (NULL != rte->targetList)
     {
-        rte = (PRangTblEntry)(plan->rangTbl);
-        tblInfo =  rte->tblInfo;
-        planState->scanState = InitScanState(tblInfo, NULL);
-
-        if(NULL != rte->targetList)
-        {
-            colNum = rte->targetList->length;
-        }
-        
-        if(tblInfo->tableDef->colNum > colNum)
-            colNum = tblInfo->tableDef->colNum;  
-
-        scanMemSize = sizeof(ScanPageInfo) + sizeof(SearchPageInfo) 
-                    + sizeof(PPageDataHeader)*colNum
-                    + sizeof(GroupItemData) + (sizeof(MemberData) + sizeof(PageOffset))*tblInfo->tableDef->colNum;
-
-        pMem = (char *)AllocMem(scanMemSize);
-
-        planState->scanState->scanPostionInfo = (PScanPageInfo)pMem;
-        planState->scanState->scanPostionInfo->searchPageList = (PSearchPageInfo)(pMem + sizeof(ScanPageInfo));
-        planState->scanState->scanPostionInfo->searchPageList->pageNum = PAGE_HEAD_PAGE_NUM+1;
-
-        /* find one new group. */
-        planState->scanState->scanPostionInfo->isNoSpace = HAT_TRUE;
-
-        scanMemSize = sizeof(ScanPageInfo) + sizeof(SearchPageInfo);
-        planState->scanState->scanPostionInfo->pageList = (PPageDataHeader *)(pMem + scanMemSize);
-        planState->scanState->scanPostionInfo->pageListNum = colNum;
-
-        scanMemSize += sizeof(PPageDataHeader)*colNum;
-        planState->scanState->scanPostionInfo->groupItem = (PGroupItemData)(pMem + scanMemSize);
+        colNum = rte->targetList->length;
     }
+
+    if (tblInfo->tableDef->colNum > colNum)
+        colNum = tblInfo->tableDef->colNum;
+
+    scanMemSize = sizeof(ScanPageInfo) + sizeof(SearchPageInfo) + sizeof(PPageDataHeader) * colNum + sizeof(GroupItemData) + (sizeof(MemberData) + sizeof(PageOffset)) * tblInfo->tableDef->colNum;
+
+    /* column counts equal colNum */
+    rowDataSize = sizeof(RowData) + sizeof(PRowColumnData);
+
+    pMem = (char *)AllocMem(scanMemSize + rowDataSize);
+
+    planState->scanState->scanPostionInfo = (PScanPageInfo)pMem;
+    planState->scanState->scanPostionInfo->searchPageList = (PSearchPageInfo)(pMem + sizeof(ScanPageInfo));
+    planState->scanState->scanPostionInfo->searchPageList->pageNum = PAGE_HEAD_PAGE_NUM + 1;
+
+    /* find one new group. */
+    planState->scanState->scanPostionInfo->isNoSpace = HAT_TRUE;
+
+    scanMemSize = sizeof(ScanPageInfo) + sizeof(SearchPageInfo);
+    planState->scanState->scanPostionInfo->pageList = (PPageDataHeader *)(pMem + scanMemSize);
+    planState->scanState->scanPostionInfo->pageListNum = colNum;
+
+    scanMemSize += sizeof(PPageDataHeader) * colNum;
+    planState->scanState->scanPostionInfo->groupItem = (PGroupItemData)(pMem + scanMemSize);
+
+    /* RowData structure. */
+    scanMemSize += sizeof(GroupItemData) + (sizeof(MemberData) + sizeof(PageOffset)) * tblInfo->tableDef->colNum;
+    planState->scanState->scanPostionInfo->rowData = (PRowData)(pMem + scanMemSize);
 
     return (PNode)planState;
 }
@@ -266,6 +267,8 @@ static PNode InitExecNodeProjectTbl(PExecState eState)
         planState->subplanState = InitExecNode(eState);       
     }
 
+    planState->prjData = InitProjectData(plan->targetList->length);
+    
     return (PNode)planState;
 }
 
@@ -329,6 +332,7 @@ static PNode InitExecSelect(PExecState eState)
         planState->subplanState = InitExecNode(eState);       
     }
 
+    planState->selectExpreData = InitSelectExpreData();
     return (PNode)planState;
 }
 
@@ -360,6 +364,8 @@ static PNode InitExecSelectNewValue(PExecState eState)
         eState->subPlanNode = (PNode)plan->subplan;
         planState->subplanState = InitExecNode(eState);       
     }
+
+    planState->selectExpreData = InitSelectExpreData();
 
     return (PNode)planState;
 }

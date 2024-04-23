@@ -369,6 +369,7 @@ PNode ProcessMergerNode(PPlanProcessor planProcess)
     nlNode = NewNode(NestLoop);
     nlNode->mergeType = mergerNode->mergeType;
     nlNode->targetList = mergerNode->targetList;
+    nlNode->rtNum = mergerNode->rtNum;
 
     /* process left and right subplan */
     planProcess->currentNode = mergerNode->lefttree;
@@ -415,6 +416,7 @@ PNode ProcessJoinNode(PPlanProcessor planProcess)
     nlNode->mergeType = joinNode->joinOp;
     nlNode->isJoin = joinNode->isJoin;
     nlNode->targetList = joinNode->targetList;
+    nlNode->rtNum = joinNode->rtNum;
 
     /* process left and right subplan */
     planProcess->currentNode = joinNode->lefttree;

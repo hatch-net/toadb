@@ -59,6 +59,12 @@ static PTableRowData ValueScanNext(PExecState eState)
         scanState = planState->scanState;
     }
 
+    if(NULL != scanState->currentRowData)
+    {
+        FreeMem(scanState->currentRowData);
+        scanState->currentRowData = NULL;
+    }
+
     cell = (PDLCell)PopDListHeadNode(&(scanState->rows));
     if(NULL == cell)
     {
@@ -68,6 +74,10 @@ static PTableRowData ValueScanNext(PExecState eState)
 
     rowData = (PTableRowData)DList_Node_Value(cell);
     EreaseDListNode((PDList)cell);
+
+    /* record on this scanner. */
+    scanState->currentRowData = rowData;
+
     return rowData;
 }
 
@@ -130,5 +140,21 @@ int TransformValues(PExecState eState)
  */
 static PTableRowData ValueScanEnd(PExecState eState)
 {
+    PValueScanState planState = NULL;
+    PScanState scanState = NULL;
+
+    planState = (PValueScanState)eState->subPlanStateNode;
+    scanState = planState->scanState;
+    if(NULL != scanState)
+    {
+        if(NULL != scanState->currentRowData)
+        {
+            FreeMem(scanState->currentRowData);
+        }
+
+        FreeMem(scanState);
+        planState->scanState = NULL;
+    }
+
     return NULL;
 }

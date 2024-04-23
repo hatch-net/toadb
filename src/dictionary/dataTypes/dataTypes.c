@@ -79,15 +79,13 @@ int getDataTypeSize(void *pval, valueType type)
     return valsize;
 }
 
-PExprDataInfo getDataInfo(void *pval, valueType type)
+PExprDataInfo getDataInfo(void *pval, valueType type, PExprDataInfo resExprData)
 {
-    PExprDataInfo result = NULL;
+    PExprDataInfo result = resExprData;
 
-    if(NULL == pval)
+    if((NULL == pval) || (NULL == result))
         return NULL;
 
-    result = (PExprDataInfo)AllocMem(sizeof(ExprDataInfo)+sizeof(Data));
-    result->data = (Data *)(((char*)result) + sizeof(ExprDataInfo));
     result->type = type;
 
     switch (type) 

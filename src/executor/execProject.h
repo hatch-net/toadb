@@ -19,9 +19,22 @@
 #include "executor.h"
 #include "tables.h"
 
+
+typedef struct ProjectStateData
+{
+    PRowData       rowData;         /* finally, the result is wrapped all the columns. */
+    
+    PRowColumnData *rawcolrow;       /* 
+                                     * project operator is used, it is a array, 
+                                     * size the same as top targetlist lenght. 
+                                     */
+}ProjectStateData, *PProjectStateData;
+
+PProjectStateData InitProjectData(int columnNum);
+
 PTableRowData ExecTableProject(PExecState eState);
 
-PTableRowData ExecTableUpdateProject(PExecState eState);
+// PTableRowData ExecTableUpdateProject(PExecState eState);
 
 PTableRowData ExecTableQuery(PExecState eState);
 

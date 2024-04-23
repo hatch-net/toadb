@@ -55,6 +55,9 @@ typedef enum PageOp
 #define GET_ITEM(offset, page) ((PItemData)((char*)(page) + offset))
 
 #define GET_ITEM_BY_INDEX(index, page) ((PItemData)((char*)((page)->item) + index * ITEM_SIZE))
+#define GET_ITEM_OFFSET_BY_INDEX(index) (index * ITEM_SIZE)
+
+/* current item, dataOffset shift to starting of next item */
 #define GET_ITEM_INDEX(page) (((page)->dataOffset - PAGE_DATA_HEADER_SIZE) / ITEM_SIZE)
 
 /* start from 0 */
@@ -159,14 +162,9 @@ typedef struct RowPosition
 
 /*
  * file store tuple with two parts:
- * item    ---  | offset | length |
- * rowData ---  | RowHeaderData | TableRowData(num = n) | RowColumnData1 | ... | RowColumnDatan | 
+ * item    ---  | offset | length | other |
+ * TableRowData ---  | TableRowData(num = n) | RowColumnData1 | ... | RowColumnDatan | 
  */
-typedef struct RowHeaderData
-{
-    RowPosition rowPos;             /* older tuple position. current tuple is latest version. */
-}RowHeaderData, *PRowHeaderData;
-
 typedef struct RowColumnData
 {
     int size;                   /* RowColumnData size, include size,attrindex,data */
@@ -181,12 +179,18 @@ typedef struct TableRowData
     PRowColumnData columnData[FLEXIBLE_SIZE];
 }TableRowData, *PTableRowData;
 
+/* 
+ * when deform rowdata to memory, use this structure.
+ * and write to file only the part of rowsData.
+*/
 typedef struct RowData
 {
-    RowHeaderData rowheader;
-    TableRowData  rowsData;
+    RowPosition     rowPos;
+    ItemData        item;
+    TableRowData    rowsData;
 }RowData, *PRowData;
 
+#define ROW_DATA_HEADER_SIZE (sizeof(RowData))
 #define MIN_ROW_SIZE (sizeof(TableRowData)+sizeof(RowColumnData))
 #define MIN_DATA_SIZE (sizeof(RowColumnData))
 

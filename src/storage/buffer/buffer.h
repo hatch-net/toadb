@@ -141,20 +141,30 @@ PPageDataHeader ExtensionTbl(PTableList tblInfo, int num, ForkType forkNum);
 int InitPage(char *page, int flag);
 
 /* main table fork page row */
-PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo);
-PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int rowIndex, PItemData itemData);
-PTableRowData GetRowDataFromExtPage(PTableList tblInfo, int pageno, int itemIndex);
+// PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo);
+PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchInfo);
+
+//PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int rowIndex, PItemData itemData);
+PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, int pageOffset, PHeapItemData heapItemData);
+
+//PTableRowData GetRowDataFromExtPage(PTableList tblInfo, int pageno, int itemIndex);
+PRowColumnData GetRowDataFromExtPageEx(PTableList tblInfo, int pageno, int itemIndex, PHeapItemData heapItemData);
 
 /* form row data and deform column data */
 PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt);
 
-PTableRowData DeFormRowData(PPageDataHeader page, int pageffset);
+// PTableRowData DeFormRowData(PPageDataHeader page, int pageffset);
 PRowData DeFormRowDatEx(PPageDataHeader page, int pageffset);
+PRowColumnData DeFormRowDatEx2(PPageDataHeader page, int pageffset);
 
 /* form group row data, row array return */
-PTableRowData FormColRowsData(PTableRowData insertdata);
+//PTableRowData FormColRowsData(PTableRowData insertdata);
 PTableRowData FormCol2RowData(PTableRowData *colRows, int colNum);
+int FormCol2RowDataEx(PRowColumnData *colRows, int colNum, PRowData rowsData);
+int FormCol2RowDataEx2(PRowColumnData *colRows, int colNum, PRowData rowsData);
+
 PTableRowData FormColData2RowData(PRowColumnData colRows);
+
 
 int UpdateMetaData(PTableList tblInfo, ForkType forkNum);
 int UpdateGroupMetaData(PTableList tblInfo, PGroupPageHeader page);
@@ -164,7 +174,7 @@ int UpdateTableMetaData(PTableList tblInfo, PPageDataHeader page);
 int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
 
 int WriteRowItemData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
-int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row, PRowHeaderData rowHeader);
+int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row);
 
 int WriteRowDataOnly(PTableList tblInfo, PPageDataHeader page, PRowData row, PItemData oldItem);
 

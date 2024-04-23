@@ -14,10 +14,13 @@
 #define hat_log printf
 #define error printf
 
+static PTableRowData ExecMergeRowData(PExecState eState, PScanTableRowData scanTblRowInfo);
+
 PNode ExecInitNestLoopNode(PExecState eState)
 {
     PNestLoopState planState = NULL;
     PNestLoop plan = NULL;
+    int size = 0;
 
     plan = (PNestLoop)eState->subPlanNode;
     planState = (PNestLoopState)eState->subPlanStateNode;
@@ -26,6 +29,10 @@ PNode ExecInitNestLoopNode(PExecState eState)
     planState->outerIsEnd = HAT_NO;
     planState->innerNeedNew = HAT_YES;
     planState->innerIsEnd = HAT_NO;
+
+    size = sizeof(NestLoopData) + sizeof(ScanTableRowData) + (plan->rtNum -1) * sizeof(PTableRowDataPosition);
+    planState->nestloopData = (PNestLoopData)AllocMem(size);
+    planState->nestloopData->scanTableRow = (PScanTableRowData)(((char*)planState->nestloopData) + sizeof(NestLoopData));
 
     return (PNode)planState;
 }
@@ -67,8 +74,6 @@ PTableRowData ExecNestLoopScan(PExecState eState)
      
     PTableRowData rowDataLeft = NULL, rowDataRight = NULL;
     PTableRowData rowData = NULL;
-
-    int found = 0;
 
     /*
      * eState->subPlanNode and  eState->subPlanStateNode 
@@ -131,21 +136,16 @@ PTableRowData ExecNestLoopScan(PExecState eState)
             }
                                 
             /* founded */
-            found = 1;
-            break;
-        }
-
-        if(found)
-        {
-            /* founded */
-            break;
+            goto FOUND;
         }
     }
 
+FOUND:
     /* merge rows, matching the targetlist. */
     eState->scanRowDataLeft = rowDataLeft;
     eState->scanRowDataRight = rowDataRight;
-    rowData = ExecMergeRowData(eState);    
+
+    rowData = ExecMergeRowData(eState, planState->nestloopData->scanTableRow);    
 
     return rowData;
 }
@@ -162,4 +162,53 @@ PTableRowData ReScanNestLoopNode(PExecState eState)
 }
 
 
+/* 
+ * Merge two PScanTableRowData into one struct PScanTableRowData. 
+ */
+PTableRowData ExecMergeRowData(PExecState eState, PScanTableRowData scanTblRowInfo)
+{
+    PScanTableRowData  rightRow = NULL, leftRow = NULL, tmpRow = NULL;
+    PTableRowDataPosition *tblRow = NULL, *tmpRowData = NULL;
+    int tableNum = 0;
+    int index = 0;
+
+    leftRow = (PScanTableRowData)eState->scanRowDataLeft;
+    rightRow = (PScanTableRowData)eState->scanRowDataRight;
+    
+    if(NULL != leftRow)
+    {
+        tableNum = leftRow->tableNum;
+    }
+
+    if(NULL != rightRow)
+    {
+        tableNum += rightRow->tableNum;
+    }
+
+    if(tableNum < 1)
+    {
+        return NULL;
+    }
+
+    tblRow = &(scanTblRowInfo->tableRowData);
+    scanTblRowInfo->tableNum = tableNum;
+
+    tmpRow = leftRow;
+    while(NULL != tmpRow)
+    {
+        tmpRowData = &(tmpRow->tableRowData);
+        tableNum = tmpRow->tableNum;
+        while(tableNum-- > 0)
+        {
+            tblRow[index++] = *(tmpRowData++);
+        }
+        
+        if(index == scanTblRowInfo->tableNum)
+            break;
+
+        tmpRow = rightRow;
+    }
+
+    return (PTableRowData)scanTblRowInfo;
+}
 

@@ -11,6 +11,7 @@
  * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
  * See the Mulan PSL v2 for more details.
 */
+#define _LARGEFILE64_SOURCE     /* See feature_test_macros(7) */
 
 #include "tfile.h"
 #include "buffer.h"
@@ -19,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -299,29 +301,32 @@ int DeleteTableFile(char *filename)
 }
 
 
-int FileReadPage(PFileHandle fd, char *page, int offset, int size)
+int FileReadPage(PFileHandle fd, char *page, INT64 offset, int size)
 {
     int readSize = 0;
-    int filelen = 0;
+	INT64 realLen = 0;
 
     if(fd == NULL || fd->fd < 0)
         return -1;
 
-    filelen = lseek(fd->fd, 0, SEEK_END);
-    if(offset >= filelen)
-    {
-        // hat_debug("read offset %d oversize file len %d\n", offset, filelen);
-        return -1;
-    }
-
     /* read page */
-    lseek(fd->fd, offset, SEEK_SET);
+    realLen = lseek64(fd->fd, offset, SEEK_SET);
+	if(realLen < 0)
+	{
+		if(errno == ENXIO)
+		{
+			hat_error("required offset %ld is overfile size.\n", offset);
+		}
+
+		return -1;
+	}
+
     readSize = read(fd->fd, (char *)page, size);
 
     return readSize;
 }
 
-int FileWritePage(PFileHandle fd, int offset, int size, char *pageBuf)
+int FileWritePage(PFileHandle fd, INT64 offset, int size, char *pageBuf)
 {
     int writeSize = 0;
     int filelen = 0;
@@ -330,7 +335,8 @@ int FileWritePage(PFileHandle fd, int offset, int size, char *pageBuf)
         return -1;
 
     /* read page */
-    lseek(fd->fd, offset, SEEK_SET);
+    lseek64(fd->fd, offset, SEEK_SET);
+
     writeSize = write(fd->fd, pageBuf, size);
     if (writeSize != size)
     {

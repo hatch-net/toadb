@@ -13,16 +13,16 @@
 /* 
  * table scan 
  */
-int ScanTable(PTableList tbl, PScanState tblScan);
+//int ScanTable(PTableList tbl, PScanState tblScan);
 
 /* 
  *  record one row , which is query .
  */
-PTableRowData SeqScanRawRow(PTableList tbl, PScanState tblScan);
-int ScanOneTblRows(char *tblName, PScan scanState);
+// PTableRowData SeqScanRawRow(PTableList tbl, PScanState tblScan);
+// int ScanOneTblRows(char *tblName, PScan scanState);
 
 /* PAX mode, search group member pages */
-PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan);
+//PTableRowData SeqScanRawRowForPages(PTableList tbl, PScanState tblScan);
 
 
 PTableRowData ExecSeqscanNode(PExecState eState);

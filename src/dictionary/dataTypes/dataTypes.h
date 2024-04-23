@@ -66,7 +66,7 @@ typedef struct ExprDataInfo
 
 int GetColumnType(char *typename);
 int getDataTypeSize(void *pval, valueType type);
-PExprDataInfo getDataInfo(void *pval, valueType type);
+PExprDataInfo getDataInfo(void *pval, valueType type, PExprDataInfo resExprData);
 HAT_BOOL getDataBool(PExprDataInfo dataInfo);
 
 #endif

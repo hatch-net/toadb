@@ -63,7 +63,7 @@ DEBUG_FLAGS = -g
 ##########################################		
 		
 CC = gcc
-# CFLAGS += -O2
+#CFLAGS += -O2
 
 CFLAGS += ${INC}
 CFLAGS += ${DEFINES}

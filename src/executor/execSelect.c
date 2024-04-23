@@ -27,6 +27,37 @@
 static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl);
 static PExprDataInfo ProcessSetValueExpr(PExecState eState, PNode setValueExpr);
 
+PSelectExpreData InitSelectExpreData()
+{
+    PSelectExpreData selExpreData = NULL;
+    int headsize = sizeof(SelectExpreData);
+    int expreDataSize = sizeof(ExprDataInfo) + sizeof(Data);
+
+    selExpreData = (PSelectExpreData)AllocMem(headsize + expreDataSize*4);    
+
+    selExpreData->leftExpreData = (PExprDataInfo)((char*)selExpreData + headsize);
+    selExpreData->righExpreData = (PExprDataInfo)((char*)(selExpreData->leftExpreData) + expreDataSize);
+    selExpreData->resultExpreData = (PExprDataInfo)((char*)(selExpreData->righExpreData) + expreDataSize);
+
+    expreDataSize = sizeof(ExprDataInfo);
+    selExpreData->leftExpreData->data = (Data *)((char*)(selExpreData->leftExpreData) + expreDataSize);
+    selExpreData->righExpreData->data = (Data *)((char*)(selExpreData->righExpreData) + expreDataSize);
+    selExpreData->resultExpreData->data = (Data *)((char*)(selExpreData->resultExpreData) + expreDataSize);
+
+    return selExpreData;
+}
+
+void SwitchToResultExpreData(PExprDataInfo *other, PExprDataInfo *result)
+{
+    PExprDataInfo tmpExpr = NULL;
+    /*
+     * leftValue/rightValue is resultExpreData, switch to leftExpreData/rightExpreData;
+     */
+    tmpExpr = *other;
+    *other = *result;
+    *result = tmpExpr;
+}
+
 /*
  * 对扫描结果进行条件表达式选择过滤
  * 条件表达式也是以树形式记录，需要递归处理 
@@ -40,7 +71,6 @@ PTableRowData ExecSelect(PExecState eState)
     PListCell tmpCell = NULL;
     PNode qualNode = NULL;
     PExprDataInfo resultExpr = 0;
-    int bResult = HAT_FALSE;
 
     for(; ;)
     {
@@ -64,7 +94,6 @@ PTableRowData ExecSelect(PExecState eState)
         eState->subPlanStateNode = (PNode)pst;
 
         /* 查询结果记录在pst中 */
-        bResult = HAT_FALSE;
         for(tmpCell = qual->head; tmpCell != NULL; tmpCell = tmpCell->next)
         {
             PNode qualNode = GetCellNodeValue(tmpCell);
@@ -77,25 +106,12 @@ PTableRowData ExecSelect(PExecState eState)
             */
             if(getDataBool(resultExpr))
             {
-                bResult = HAT_TRUE;
-                break;
+                goto RETEND;
             }
         }
-
-        /* 
-         * 表达式为真，返回当前扫描结果; 
-         * 表达式为假，获取下一条数据
-         */
-        if(HAT_TRUE == bResult)
-            break;
-        
-        if(NULL != rowData)
-        {
-            ReleaseRowData((PScanTableRowData)rowData);
-            rowData = NULL;
-        }
     } 
-    
+
+RETEND:
     return rowData;
 }
 
@@ -130,16 +146,16 @@ static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl)
 
     /* rowdata is reslut of pre project logical. */
     PScanTableRowData scanRowData = (PScanTableRowData)eState->scanRowDataLeft;
-    // PTableRowData targetRowData = (PTableRowData)eState->scanRowDataRight;
     
     PRowColumnData newRowColData = NULL;
     PTableRowDataWithPos resultRowData = NULL;
-    PTableRowData newColData = NULL;
+    PRowColumnData oldColData = NULL;
 
     AttrDataPosition tempDataPos = {0};
     PTableRowDataPosition tblRowPosition = NULL;
     PColumnRef colDef = NULL;
     int rowIndex = 0;
+    int found = HAT_FALSE;
 
     PResTarget restarget = NULL;
     PTargetEntry targetEntry = NULL;
@@ -191,18 +207,21 @@ static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl)
         }
 
         /* 根据target中列的定义，找到对应列的位置信息 */
-        newColData = GetColRowData(tblRowPosition, colDef, &tempDataPos, 0);
-        if(NULL == newColData)
+        oldColData = GetColRowDataEx(tblRowPosition, colDef, &tempDataPos, 0, &found, HAT_FALSE);
+        if(NULL == oldColData)
         {
             hat_error("column %d rowdata not founded.\n", resultRowData->num);
             break;
         } 
 
+        if(HAT_FALSE == found)
+            FreeMem(oldColData);
+
         /* replace value in the rowdata. */
         newRowColData = transFormExpr2RowColumnData(newColExprValue, targetEntry->attrIndex);
 
         /* only one column */
-        rowSize = sizeof(AttrDataPosition) + sizeof(PRowColumnData) ;
+        rowSize = sizeof(AttrDataPosition) + sizeof(PRowColumnData);
         attrDataPos = (PAttrDataPosition)AllocMem(rowSize);
 
         attrDataPos->headItem = tempDataPos.headItem;
@@ -254,7 +273,3 @@ static PExprDataInfo ProcessSetValueExpr(PExecState eState, PNode setValueExpr)
     return exprResult;
 }
 
-static PTableRowData UpdateRowColumnData()
-{
-    return NULL;
-}

@@ -151,13 +151,20 @@ int SendToPort(PPlanStateNode rowDataInfo, PTableRowData rowData)
 {
     PPortal portal = rowDataInfo->portal;
     PDList rows = NULL;
+    PTableList localRowData = NULL;
+    int dataSize = 0;
 
     if((NULL == portal) || (NULL == rowData))
         return -1;
 
-    rows = portal->rows;
+    /* copy rowData locally, rowColumnData not. */
+    dataSize = sizeof(TableRowData) + sizeof(PRowColumnData) * rowData->num;
+    localRowData = (PTableList)AllocMem(dataSize);
 
-    if(AddCellToListTail(&rows, rowData) < 0)
+    memcpy(localRowData, rowData, dataSize);
+
+    rows = portal->rows;
+    if(AddCellToListTail(&rows, localRowData) < 0)
     {
         return -1;
     }

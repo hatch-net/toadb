@@ -290,7 +290,7 @@ PVFVec smgr_open(PsgmrInfo smgrInfo, char *fileName, ForkType forkNum)
 
 int smgr_read(PVFVec vfInfo, PPageOffset pageOffset, char *page)
 {
-    int offset = (pageOffset->pageno - 1) * PAGE_MAX_SIZE;
+    INT64 offset = (pageOffset->pageno - 1) * PAGE_MAX_SIZE;
     int readlen = 0;
 
     readlen = FileReadPage(vfInfo->pfh, page, offset, PAGE_MAX_SIZE);
@@ -304,7 +304,7 @@ int smgr_read(PVFVec vfInfo, PPageOffset pageOffset, char *page)
 
 int smgr_write(PVFVec vfInfo, PPageOffset pageOffset, PPageHeader page)
 {
-    int ret = 0;
+    INT64 ret = 0;
     int offset = (pageOffset->pageno - 1) * PAGE_MAX_SIZE;
 
     ret = FileWritePage(vfInfo->pfh, offset, PAGE_MAX_SIZE, (char *)page);

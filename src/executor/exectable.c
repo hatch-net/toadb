@@ -198,56 +198,6 @@ int ExecSelectStmt(PSelectStmt stmt, PPortal portal)
 }
 #endif 
 
-/* 
- * Merge two row into struct PScanTableRowData. 
- */
-PTableRowData ExecMergeRowData(PExecState eState)
-{
-    PScanTableRowData scanTblRowInfo = NULL, rightRow = NULL, leftRow = NULL, tmpRow = NULL;
-    PTableRowDataPosition *tblRow = NULL, *tmpRowData = NULL;
-    int tableNum = 0;
-    int index = 0;
-
-    leftRow = (PScanTableRowData)eState->scanRowDataLeft;
-    rightRow = (PScanTableRowData)eState->scanRowDataRight;
-    
-    if(NULL != leftRow)
-    {
-        tableNum = leftRow->tableNum;
-    }
-
-    if(NULL != rightRow)
-    {
-        tableNum += rightRow->tableNum;
-    }
-
-    if(tableNum < 1)
-    {
-        return NULL;
-    }
-
-    scanTblRowInfo = (PScanTableRowData)AllocMem(sizeof(ScanTableRowData) + (tableNum -1) *sizeof(PTableRowDataPosition));
-    tblRow = &(scanTblRowInfo->tableRowData);
-    scanTblRowInfo->tableNum = tableNum;
-
-    tmpRow = leftRow;
-    while(NULL != tmpRow)
-    {
-        tmpRowData = &(tmpRow->tableRowData);
-        tableNum = tmpRow->tableNum;
-        while(tableNum-- > 0)
-        {
-            tblRow[index++] = *(tmpRowData++);
-        }
-        
-        if(index == scanTblRowInfo->tableNum)
-            break;
-
-        tmpRow = rightRow;
-    }
-
-    return (PTableRowData)scanTblRowInfo;
-}
 
 int ExecRowDataCompare(PExecState eState)
 {

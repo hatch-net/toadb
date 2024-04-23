@@ -13,6 +13,8 @@
 #include <string.h>
 #include "public.h"
 
+static int ResetColumnInUsed(PScanPageInfo scanPageInfo);
+#if 0
 /*
  * there, we read one row from table, 
  * from tblScan marked offset and index of page.
@@ -91,6 +93,7 @@ PTableRowData SeqScanRawRow(PTableList tbl, PScanState tblScan)
     return rawrow;
 }
 
+
 /*
  * sequence scan all rows in the pages of the group. 
  */
@@ -149,7 +152,7 @@ ENDONE:
     return rawrow;
 }
 
-#if 0
+
 int ScanTable(PTableList tbl, PScanState tblScan)
 {
     int num =0; 
@@ -332,6 +335,8 @@ PTableRowData SeqscanNext(PExecState eState)
     pagelist = tblScan->scanPostionInfo->pageList;
     found = 1 - tblScan->scanPostionInfo->pageReset;
 
+    ResetColumnInUsed(tblScan->scanPostionInfo);
+
     do
     {
         /* maybe first time, or next group. */
@@ -378,8 +383,9 @@ PTableRowData SeqscanEnd(PExecState eState)
  */
 PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
 {
-    PTableRowData *rawcolrow = NULL;
+    PRowColumnData *rawcolrow = NULL;
     PTableRowData rawrow = NULL;
+    PScanTableRowData scantblRowData = NULL;
     int index = 0;
 
     if(NULL == tbl || tblScan == NULL)
@@ -389,7 +395,7 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
     }
 
     /* column num which we want is not all the table defined. */
-    rawcolrow = (PTableRowData *)AllocMem(sizeof(PTableRowData) * tblScan->scanPostionInfo->pageListNum);
+    rawcolrow = tblScan->scanPostionInfo->rowData->rowsData.columnData;
 
     /* second get row data, column data is in the every group member pages. */
     for(index = 0; index < tblScan->scanPostionInfo->pageListNum; index++)
@@ -399,7 +405,7 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
         if(tblScan->scanPostionInfo->pageReset == HAT_TRUE)
             tblScan->scanPostionInfo->searchPageList[index].item_offset = 0;
 
-        rawcolrow[index] = GetRowDataFromPage(tbl, &(tblScan->scanPostionInfo->searchPageList[index]));
+        rawcolrow[index] = GetRowDataFromPageEx(tbl, &(tblScan->scanPostionInfo->searchPageList[index]));
         if(NULL == rawcolrow[index])
         {
             break;
@@ -412,25 +418,23 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
     /* error or end ocur */
     if(index != tblScan->scanPostionInfo->pageListNum)
     {
-        goto END;
+        return NULL;
     }
 
     /* using colrow form one rawrow. */
-    if(tblScan->scanPostionInfo->pageListNum > 1)
-    {
-        rawrow = FormCol2RowData(rawcolrow, tblScan->scanPostionInfo->pageListNum);
-    }
-    else
-    {
-        rawrow = rawcolrow[0];
-    }
-     
-    return (PTableRowData)TransFormScanRowData(rawrow, tblScan);
-END:
-    /* error ocur */
-    if(NULL != rawcolrow)
-        FreeMem(rawcolrow);
-    return NULL;
+    FormCol2RowDataEx2(rawcolrow, 
+                        tblScan->scanPostionInfo->pageListNum, 
+                        tblScan->scanPostionInfo->rowData);
+    
+    scantblRowData = tblScan->scanPostionInfo->scanTableRow;
+    scantblRowData->tableNum = 1;
+    scantblRowData->tableRowData->rowNum = 1;
+    scantblRowData->tableRowData->rindex = tblScan->rindex;
+    scantblRowData->tableRowData->tblInfo = tblScan->tblInfo;
+    scantblRowData->tableRowData->rowDataPosition[0]->scanPostionInfo = tblScan->scanPostionInfo;
+    scantblRowData->tableRowData->rowDataPosition[0]->rowData = &(tblScan->scanPostionInfo->rowData->rowsData);
+
+    return (PTableRowData)scantblRowData;
 }
 
 /* 
@@ -450,7 +454,7 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     int colIndex = 0;
     int colNum = 0;
     int memScan = 0, colindexSize = 0, groupItemSize = 0;
-    int searchPageInfoSize = 0, pageListSize = 0;
+    int searchPageInfoSize = 0, pageListSize = 0, scanRowSize = 0;
 
     if((NULL == tblScan->tblInfo) || (NULL == targetList))
     {
@@ -462,7 +466,7 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     /* scanPositionInfo */
     memScan = sizeof(ScanPageInfo);
     
-    /* colindexList */
+    /* colindexList and flags */
     colindexSize = sizeof(int) * colNum; 
 
     /* searchPageList which space is over or equal real needed. */
@@ -475,10 +479,13 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     groupItemSize = sizeof(GroupItemData) 
                     + (sizeof(MemberData) + sizeof(PageOffset)) * colNum;
 
+    scanRowSize =  SCANTBLROW_HEADER_SIZE  // ScanTblRow Size
+                    + sizeof(PRowColumnData) * colNum + ROW_DATA_HEADER_SIZE;       // RowData size                 
+
     scanPositionInfo = (PScanPageInfo)AllocMem(
-                                memScan + colindexSize 
+                                memScan + colindexSize + colindexSize
                                 + searchPageInfoSize + pageListSize 
-                                + groupItemSize);
+                                + groupItemSize + scanRowSize );
     
     /* Column list we want will be initialize. */
     scanPositionInfo->colindexList = (int *)((char*)scanPositionInfo + memScan);
@@ -504,6 +511,10 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
         return NULL;
     }
 
+    /* colInused flag array */
+    memScan += colindexSize;
+    scanPositionInfo->colInusedList = (int *)((char*)scanPositionInfo + memScan);
+
     /* searchPageInfo space */
     memScan += colindexSize;
     scanPositionInfo->searchPageList = (PSearchPageInfo)((char*)scanPositionInfo + memScan);
@@ -518,11 +529,50 @@ PScanPageInfo InitScanPositionInfo(PExecState eState)
     memScan += pageListSize;
     scanPositionInfo->groupItem = (PGroupItemData)((char*)scanPositionInfo + memScan);
 
+    /*
+     * scanTableRow member's memory
+     */
+    memScan += groupItemSize ;
+    scanPositionInfo->scanTableRow = (PScanTableRowData)((char*)scanPositionInfo + memScan);
+
+    memScan += sizeof(ScanTableRowData);
+    scanPositionInfo->scanTableRow->tableRowData = (PTableRowDataPosition)((char*)scanPositionInfo + memScan);
+
+    memScan += sizeof(TableRowDataPosition) + sizeof(PRowDataPosition);
+    scanPositionInfo->scanTableRow->tableRowData->rowDataPosition[0] = (PRowDataPosition)((char*)scanPositionInfo + memScan);
+
+    memScan += sizeof(RowDataPosition);
+    scanPositionInfo->rowData = (PRowData)((char*)scanPositionInfo + memScan);
+
     /* 
      * initialize member values.
      */
     scanPositionInfo->groupPageInfo.pageNum = PAGE_HEAD_PAGE_NUM+1;
     scanPositionInfo->pageReset = HAT_TRUE;
+    scanPositionInfo->initColNum = colNum;
 
     return scanPositionInfo;
+}
+
+static int ResetColumnInUsed(PScanPageInfo scanPageInfo)
+{
+    int *inUsedFlag = NULL;
+    PRowColumnData *colData = NULL;
+    int index = 0;
+
+    inUsedFlag = scanPageInfo->colInusedList;
+    colData = scanPageInfo->rowData->rowsData.columnData;
+
+    for( ; index < scanPageInfo->pageListNum; index++)
+    {
+        if(HAT_TRUE == inUsedFlag[index])
+        {
+            /* reset */
+            inUsedFlag[index] = HAT_FALSE;
+            continue;
+        }
+
+        FreeMem(colData[index]);
+    }
+    return 0;
 }

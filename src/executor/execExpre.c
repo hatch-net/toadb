@@ -17,7 +17,7 @@
 #include "public.h"
 #include "server_pub.h"
 #include "queryNode.h"
-
+#include "string.h"
 
 static PExprDataInfo ComputeBoolExprNode(PNode node, PExecState eState);
 static PExprDataInfo ComputeExpreNode(PNode node, PExecState eState);
@@ -84,20 +84,28 @@ static PExprDataInfo ProcessQualExprNode(PNode node, PExecState eState)
 static PExprDataInfo ComputeBoolExprNode(PNode node, PExecState eState)
 {
     PMergerEntry mergerNode = (PMergerEntry)node;
-
+    PSelectState pst = (PSelectState)eState->subPlanStateNode;
     PExprDataInfo leftResult = NULL, rightResult = NULL;
     int result = 0;
-    int boolType = mergerNode->mergeType;       /* and,or */
+    int boolType = mergerNode->mergeType;       /* and,or */  
 
     /* 递归获取结果 */
     if(NULL != mergerNode->lefttree)
     {
-        leftResult = ExecSelectQual(mergerNode->lefttree,eState);
+        ExecSelectQual(mergerNode->lefttree,eState);
+        
+        /* leftResult saves in reslutExpreData, shift to leftExpreData. */
+        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->leftExpreData));
+        leftResult = pst->selectExpreData->leftExpreData;
     }
 
     if(NULL != mergerNode->righttree)
     {
-        rightResult = ExecSelectQual(mergerNode->righttree,eState);
+        ExecSelectQual(mergerNode->righttree,eState);
+
+        /* rightResult saves in reslutExpreData, shift to righExpreData. */
+        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->righExpreData));
+        rightResult = pst->selectExpreData->righExpreData;
     }
 
     /* 计算结果 */
@@ -123,7 +131,8 @@ static PExprDataInfo ComputeBoolExprNode(PNode node, PExecState eState)
         break;
     }
     
-    return getDataInfo(&result, VT_INT);
+    /* result save to resultExpreData. */
+    return getDataInfo(&result, VT_INT, pst->selectExpreData->resultExpreData);
 }
 
 /*
@@ -132,29 +141,46 @@ static PExprDataInfo ComputeBoolExprNode(PNode node, PExecState eState)
  */
 static PExprDataInfo ComputeExpreNode(PNode node, PExecState eState)
 {
+    PSelectState pst = (PSelectState)eState->subPlanStateNode;
     PExprEntry simpleExprNode = (PExprEntry)node;
-    PExprDataInfo leftvalue = NULL, rightvalue = NULL;
+    PExprDataInfo leftvalue = NULL, rightvalue = NULL, tmpExpr = NULL;
     int exprType = simpleExprNode->op;
     PExprDataInfo result = 0;
 
     /* 获取表达式两端的值与类型 */
     if(NULL != simpleExprNode->lefttree)
     {
-        leftvalue = ProcessQualExprNode(simpleExprNode->lefttree, eState);
+        ProcessQualExprNode(simpleExprNode->lefttree, eState);
+
+        /*
+        * leftValue is resultExpreData, switch to leftExpreData;
+        */
+        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->leftExpreData));
+        leftvalue = pst->selectExpreData->leftExpreData;
     }
 
     if(NULL != simpleExprNode->righttree)
     {
-        rightvalue = ProcessQualExprNode(simpleExprNode->righttree, eState);
+        ProcessQualExprNode(simpleExprNode->righttree, eState);
+
+        /*
+        * rightvalue is resultExpreData, switch to rightExpreData;
+        */
+        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->righExpreData));
+        rightvalue = pst->selectExpreData->righExpreData;
     }
     
 
     /* 计算表达式结果，调用类型通用计算函数 */
-    result = ComputeExpr(leftvalue, rightvalue, exprType);
+    result = ComputeExpr(leftvalue, rightvalue, pst->selectExpreData->resultExpreData, exprType);
 
     return result;
 }
 
+/* 
+ * get column or const value.
+ * result is saved in pselectplanState->selectExpreData->resultExpreData.
+ */
 static PExprDataInfo GetExpreOperatorValue(PNode node, PExecState eState)
 {    
     PExprDataInfo exprValue = NULL;
@@ -185,16 +211,17 @@ static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState)
 {
     PExprEntry simpleExprNode = (PExprEntry)eState->subPlanNode;
     PSelectState pst = (PSelectState)eState->subPlanStateNode;
-    PTableRowData rowData = (PTableRowData)pst->resultRow;
+    PScanTableRowData rowData = (PScanTableRowData)pst->resultRow;
     PList rtable = pst->rtable;
 
     PColumnRef columnRefNode = (PColumnRef)node;
     PTableRowDataPosition tblRowPosition = NULL;
-    PTableRowData rawcolrow = NULL;
+    PRowColumnData colData = NULL;
     PExprDataInfo exprValue = NULL;
 
     PRangTblEntry rte = NULL;
     int rindex = -1;
+    int found = HAT_FALSE;
 
     /* 找到对应的表信息  */
     if(node == simpleExprNode->lefttree)
@@ -210,7 +237,7 @@ static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState)
     }
 
     /* 根据表元数据定义，找到对应的表的查询行 */
-    tblRowPosition = GetTblRowDataPosition((PScanTableRowData)rowData, rte->tblInfo, rte->rindex);
+    tblRowPosition = GetTblRowDataPosition(rowData, rte->tblInfo, rte->rindex);
     if(NULL == tblRowPosition)
     {
         hat_error("select rowdata position not founded.\n");
@@ -220,18 +247,21 @@ static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState)
     /* 
      * 根据列的定义，找到对应列的信息进行投影，得到该表列的投影字段数组
      */
-    rawcolrow = GetColRowData(tblRowPosition, columnRefNode, NULL, 0);
-    if(NULL == rawcolrow)
+    colData = GetColRowDataEx(tblRowPosition, columnRefNode, NULL, 0, &found, HAT_FALSE);
+    if(NULL == colData)
     {
         hat_error("column rowdata not founded.\n");
         return NULL;
     }    
 
-    exprValue = (PExprDataInfo)AllocMem(sizeof(ExprDataInfo));
-    exprValue->type = columnRefNode->vt;
-    exprValue->data = TranslateRawColumnData(rawcolrow, columnRefNode);
-    exprValue->size = rawcolrow->size;       
+    exprValue = pst->selectExpreData->resultExpreData;
+    TranslateRawColumnData(colData, columnRefNode, exprValue->data);
 
+    exprValue->type = columnRefNode->vt;
+    exprValue->size = colData->size;       
+
+    if(HAT_FALSE == found)
+        FreeMem(colData);
     return exprValue;
 }
 
@@ -241,12 +271,13 @@ static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState)
  */
 static PExprDataInfo GetExprDataConstValue(PNode node, PExecState eState)
 {
+    PSelectState pst = (PSelectState)eState->subPlanStateNode;
     PConstValue pcv = (PConstValue)node;
     PExprDataInfo exprValue = NULL;
 
-    exprValue = (PExprDataInfo)AllocMem(sizeof(ExprDataInfo));
+    exprValue = pst->selectExpreData->resultExpreData;
     exprValue->type = pcv->vt;
-    exprValue->data = &(pcv->val);
+    memcpy(exprValue->data , &(pcv->val), sizeof(Data));
     exprValue->size = -1;       
 
     if(pcv->isnull)

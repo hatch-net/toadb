@@ -21,6 +21,7 @@
 
 
 typedef PExprDataInfo (*Operator)(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+typedef PExprDataInfo (*OperatorEx)(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
 typedef int (*Operator1)(PExprDataInfo value);
 
 #define DATATYPEPROC_VERSION    (0x3A01)
@@ -29,7 +30,7 @@ typedef struct DataTypeProcs
     int       version;                  /* 兼容性 */
     valueType dataType;
     /* > ， >= , = , <= , < , != , not, and, or */
-    Operator opf[Op_Type_MAX];
+    OperatorEx opf[Op_Type_MAX];
     Operator1 getSize;
 }DataTypeProcs, *PDataTypeProcs;
 

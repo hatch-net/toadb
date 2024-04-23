@@ -38,5 +38,15 @@ int TableWrite(PTableList tblInfo, PPageHeader page, ForkType forkNum);
 int GetObjectId();
 void SetObjectId(int id);
 
+/* 
+ * page tuple operator 
+*/
+int InsertRowData(PPageDataHeader page, PRowData rowData, PItemData item);
+int InsertItemData(PPageDataHeader page, PItemData item);
+
+int ReplaceRowData(PPageDataHeader page, PRowData rowData, PItemData item);
+int ReplaceItemData(PPageDataHeader page, PItemData item, int itemIndex);
+
+PRowColumnData ReadRowData(PPageDataHeader page,  int offset);
 
 #endif

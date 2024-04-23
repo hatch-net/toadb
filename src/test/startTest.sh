@@ -35,13 +35,18 @@ function createSimple()
     excuteSql "create table student(sid int, sname varchar);"
 }
 
-function testSimple() 
-{    
-    excuteSql "insert into student(sid,sname) values(1,'lilei'),(2,'wangming'),(3,'hanmeimei'),(4,'markhu');"
+function testSimpleQuery()
+{
     excuteSql "select sid from student;"
     excuteSql "select * from student;"
     excuteSql "select sname from student where sid > 1;"
     excuteSql "select * from student a ,student b;"
+}
+
+function testSimple() 
+{    
+    excuteSql "insert into student(sid,sname) values(1,'lilei'),(2,'wangming'),(3,'hanmeimei'),(4,'markhu');"
+    #testSimpleQuery;
 }
 
 function restoreSimple()
@@ -65,13 +70,8 @@ function restoreMultiFromClause()
     excuteSql "drop table timetable;"
 }
 
-function testMultiFromClause() 
+function testQueyqualClause()
 {
-    excuteSql "insert into student(sid,sname) values(1,'lilei'),(2,'wangming'),(3,'hanmeimei'),(4,'markhu');"
-    excuteSql "insert into teacher  values(1,'w'),(2,'z'),(3,'s'),(4,'t');"
-    excuteSql "insert into course values(1,'e'),(2,'h'),(3,'f'),(4,'o');"
-    excuteSql "insert into timetable values(1,1,1),(2,3,2),(3,2,1),(4,3,4);"
-
     excuteSql "select * from student,teacher,course;"
     excuteSql "select tid,sid,cid from student,teacher,course;"
     excuteSql "select * from student,teacher,course,timetable where timetable.tsid=student.sid;"
@@ -80,10 +80,19 @@ function testMultiFromClause()
     excuteSql "select * from student a,student b where a.sid > 3;"
     excuteSql "select * from teacher a,teacher b where a.sid=b.tid and a.sid >= a and b.tid <=4;"
     excuteSql "select * from teacher a,student b where a.id=b.id;"
-
 }
 
-function testUpdateStmt()
+function testMultiFromClause() 
+{
+    excuteSql "insert into student(sid,sname) values(1,'lilei'),(2,'wangming'),(3,'hanmeimei'),(4,'markhu');"
+    excuteSql "insert into teacher  values(1,'w'),(2,'z'),(3,'s'),(4,'t');"
+    excuteSql "insert into course values(1,'e'),(2,'h'),(3,'f'),(4,'o');"
+    excuteSql "insert into timetable values(1,1,1),(2,3,2),(3,2,1),(4,3,4);"
+
+   # testQueyqualClause;
+}
+
+function testStudent()
 {
     excuteSql "update student set sname='lilei1' where sid=1;"
     excuteSql "update student set sname='wangmin' where sid=2;"
@@ -91,13 +100,22 @@ function testUpdateStmt()
     excuteSql "update student set sname='hanmeimei3001' where sid=3;"
     excuteSql "update student set sname='hanmeimei31' where sid=3;"
     excuteSql "select * from student;"
+}
 
+function testTearch()
+{
     excuteSql "update teacher set tname='wangxiaohua11' where tid=1;"
     excuteSql "update teacher set tname='zhangduoduo22' where tid=2;"
     excuteSql "update teacher set tname='shixiaodong33' where tid=3;"
     excuteSql "update teacher set tname='shixiaodong333' where tid=3;"
     excuteSql "update teacher set tname='shixiaodong3' where tid=3;"
     excuteSql "select * from teacher;"
+}
+
+function testUpdateStmt()
+{
+    testStudent;
+    testTearch;
 }
 
 function createAll()
@@ -121,9 +139,10 @@ function restoreAll()
 
 function excutorTest()
 {
+    #restoreAll;
     createAll;
     TestAll;
-    # restoreAll;
+#    restoreAll;
 }
 
 excutorTest;

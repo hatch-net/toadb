@@ -58,6 +58,7 @@ typedef struct RangTblEntry
 typedef struct MergerEntry
 {
     NodeType	type;
+    int         rtNum;             /* total of subNode rtNum */
     PList       targetList;
     int         rindex;             /* 对应的RTE rindex */
     int         isJoin;
@@ -69,6 +70,7 @@ typedef struct MergerEntry
 typedef struct JoinEntry
 {
     NodeType	type;
+    int         rtNum;             /* total of subNode rtNum */
     PList       targetList;
     int         rindex;             /* 对应的RTE rindex */
     int         isJoin;
@@ -81,8 +83,8 @@ typedef struct JoinEntry
 typedef struct ExprEntry
 {
     NodeType	type;
-    PList       targetList;
     int         rtNum;
+    PList       targetList;
     int         rindex;              /* 对应的RTE rindex , 当rtNum = 1 */
     int         rrindex;             /* 对应的RTE rindex , 当rtNum = 2 */
     int         op;

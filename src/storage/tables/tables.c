@@ -310,3 +310,98 @@ int GetObjectId()
     return objId++;
 }
 
+
+int InsertRowData(PPageDataHeader page, PRowData rowData, PItemData item)
+{
+    PTableRowData tblRowData = NULL;
+    int size = 0;
+
+    /* first rowdata insert into page buffer */
+    tblRowData = &(rowData->rowsData);
+    size = sizeof(TableRowData);
+
+    item->len = SetItemSize(item->len, size + tblRowData->size);
+    item->offset = page->dataEndOffset - size - tblRowData->size;
+
+    ReplaceRowData(page, rowData, item);
+
+    return 0;
+}
+
+int InsertItemData(PPageDataHeader page, PItemData item)
+{
+    char *newRowBuffer = NULL;
+
+    /* item data insert into page buffer */
+    newRowBuffer = (char *)page + page->dataOffset;
+    memcpy(newRowBuffer, item, sizeof(ItemData));
+
+    /* page buffer offset positon reset */
+    page->dataOffset += sizeof(ItemData);
+    page->dataEndOffset = item->offset;
+
+    return 0;
+}
+
+/*
+ * rowdata insert into page buffer.
+ * and update item len.
+ * data ==> TableRowData | columndata1 ... columndatan|
+ * NOTE, oldlen >= newlen 
+ */
+int ReplaceRowData(PPageDataHeader page, PRowData rowData, PItemData item)
+{
+    int columnIndex = 0;
+    char *newRowBuffer = NULL;
+    PTableRowData tblRowData = &(rowData->rowsData);
+
+    newRowBuffer = (char *)page + item->offset;    
+    //memcpy(newRowBuffer, tblRowData, size);
+    //newRowBuffer += size;
+
+    for (columnIndex = 0; columnIndex < rowData->rowsData.num; columnIndex++)
+    {
+        /* column header and data */
+        memcpy(newRowBuffer, tblRowData->columnData[columnIndex], tblRowData->columnData[columnIndex]->size);
+        newRowBuffer += tblRowData->columnData[columnIndex]->size;
+    }
+
+    return 0;
+}
+
+int ReplaceItemData(PPageDataHeader page, PItemData item, int itemIndex)
+{
+    char *newRowBuffer = NULL;
+
+    /* item data replace */
+    newRowBuffer = (char *)page + itemIndex * sizeof(ItemData);
+    memcpy(newRowBuffer, &item, sizeof(ItemData));
+
+    return 0;
+}
+
+/*
+ * format of row data in the page
+ * |tablerowDataHead|column1                              | column2                             |..| tablerowDataHead|
+ * |total size, num | column total size, attr index, data | column total size, attr index, data |..| ..              |
+ * nsm storage model, num maybe is greater 1;
+ * pax storage model, num always equal 1;
+ */
+PRowColumnData ReadRowData(PPageDataHeader page,  int offset)
+{
+    int colSize = 0;
+    PRowColumnData colData = NULL;
+    char *pageBuf = ((char *)page + offset);
+
+    /*
+     * pagerow memory structure:
+     * | RowColumnData  |
+     */
+    colData = (PRowColumnData)pageBuf;
+    colSize = colData->size;
+
+    colData = (PRowColumnData)AllocMem(colSize);
+
+    memcpy(colData, pageBuf, colSize);
+    return colData;
+}

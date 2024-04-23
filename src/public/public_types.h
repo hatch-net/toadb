@@ -1,6 +1,5 @@
 /*
- *	toadb expreCompute
- *
+ *	toadb public types
  * Copyright (c) 2023-2024 senllang
  * 
  * toadb is licensed under Mulan PSL v2.
@@ -13,13 +12,12 @@
  * See the Mulan PSL v2 for more details.
 */
 
-#ifndef HAT_EXPRE_COMPUTE_H_H
-#define HAT_EXPRE_COMPUTE_H_H
+#ifndef HAT_PUBLIC_TYPES_H_H
+#define HAT_PUBLIC_TYPES_H_H
 
+typedef unsigned long long UINT64;
+typedef long long INT64;
 
-#include "dataTypeProc.h"
-
-
-PExprDataInfo ComputeExpr(PExprDataInfo left, PExprDataInfo right, PExprDataInfo resExpre, int op);
+typedef unsigned char BYTE;
 
 #endif 

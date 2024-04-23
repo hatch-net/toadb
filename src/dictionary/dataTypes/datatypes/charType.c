@@ -15,11 +15,11 @@
 #include "charType.h"
 #include "hatstring.h"
 
-static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo charLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo charLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
 static int charGetSize(PExprDataInfo value);
 
 
@@ -56,7 +56,7 @@ static int charGetSize(PExprDataInfo value)
 
     return value->size;
 }
-static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
     char *str1 = leftvalue->data->pData;
@@ -68,10 +68,10 @@ static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo 
         result = HAT_TRUE;
     }
 
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
-static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
     char *str1 = leftvalue->data->pData;
@@ -83,10 +83,10 @@ static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprData
         result = HAT_TRUE;
     }
 
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
-static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
     char *str1 = leftvalue->data->pData;
@@ -98,10 +98,10 @@ static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo ri
         result = HAT_TRUE;
     }
 
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
-static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
     char *str1 = leftvalue->data->pData;
@@ -113,10 +113,10 @@ static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInf
         result = HAT_TRUE;
     }
 
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
-static PExprDataInfo charLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo charLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
     char *str1 = leftvalue->data->pData;
@@ -128,5 +128,5 @@ static PExprDataInfo charLessOperator(PExprDataInfo leftvalue, PExprDataInfo rig
         result = HAT_TRUE;
     }
 
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }

@@ -115,19 +115,21 @@ int pax_ExecModifyTable(PExecState eState, PTableList tblInfo, PTableRowData row
  */
 int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDataPos)
 {
+    PModifyTblState planState = (PModifyTblState)eState->subPlanStateNode;
     PTableRowDataWithPos rowDataPos = (PTableRowDataWithPos)updateDataPos;
+    PRowData oldRowData = (PRowData)(eState->scanRowDataRight);
     PAttrDataPosition attrDataPos = NULL;
     PPageDataHeader originPage = NULL;
     PPageDataHeader newRowPage = NULL;
     PPageDataHeader undoPage = NULL;
-    PRowData oldTuple = NULL;
-    PRowData newRowData = {0};
-    RowHeaderData rowheader = {0};
+    PRowData newRowData = NULL;
     PItemData oldItem = NULL;
-
+    
     int attrIndex = 0;
     int rowSize = 0;
+    int oldRowSize = 0;
     int ret = 0;
+    int originPageIsDirty = 0;
 
     if(rowDataPos->num <= 0)
     {
@@ -139,18 +141,15 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
      * form new row data, with undo tuple version chain.
      * pax storage type attrDataPos->rowData.num  always is 1.
     */
-    rowSize = sizeof(RowData) + sizeof(PRowColumnData);
-    newRowData = (PRowData)AllocMem(rowSize);
+    newRowData = planState->scanState->scanPostionInfo->rowData;
 
     for(attrIndex = 0; attrIndex < rowDataPos->num; attrIndex++)
     {
         attrDataPos = rowDataPos->attrDataPos[attrIndex];
+        rowSize = sizeof(ItemData) + oldRowData->rowsData.size;
 
-        /* find old tuple position */
+        /* first use undo page. */
         originPage = GetPageByIndex(tblInfo, attrDataPos->headItem.pageno.pageno, MAIN_FORK);
-
-        oldTuple = DeFormRowDatEx(originPage, attrDataPos->headItem.itemData.offset);
-        rowSize = sizeof(ItemData) + sizeof(RowData) + oldTuple->rowsData.size;
 
         /* find free space in the undo page which is the group. */
         undoPage = GetSpaceSpecifyPage(tblInfo, rowSize, PAGE_NEW, MAIN_FORK, originPage->undoPage.pageno, PAGE_UNDO);
@@ -160,32 +159,40 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
             return -1;
         }
 
-        /* first use undo page. */
         if(IsInvalidPageNum(originPage->undoPage.pageno))
         {
             originPage->undoPage.pageno = undoPage->header.pageNum;
+            originPageIsDirty = HAT_TRUE;
         }
 
-        rowSize = sizeof(TableRowData) + attrDataPos->rowData.num * sizeof(PRowColumnData);
-        memcpy(&(newRowData->rowsData), &(attrDataPos->rowData), rowSize);
+        /* old column rowdata */
+        newRowData->rowsData.num = 1;
+        newRowData->rowsData.columnData[0] = oldRowData->rowsData.columnData[attrIndex];
+        newRowData->rowsData.size = newRowData->rowsData.columnData[0]->size;
+        oldRowSize = newRowData->rowsData.size;
 
-        /* oldtuple is copied to undo page. */
-        ret = WriteRowItemDataWithHeader(tblInfo, undoPage, oldTuple, &(newRowData->rowheader));
+         /* oldtuple is copied to undo page. */    
+        ret = WriteRowItemDataWithHeader(tblInfo, undoPage, newRowData);
         if(ret < 0)
         {
             break;
         }
-        
+
+        /* new column rowdata */
+        newRowData->rowsData.columnData[0] = attrDataPos->rowData.columnData[attrIndex];
+        newRowData->rowsData.size = newRowData->rowsData.columnData[0]->size;
+
         /* insert new tuple to page, inplace or new other place. */
-        if(attrDataPos->rowData.size <= oldTuple->rowsData.size)
+        if(newRowData->rowsData.size <= oldRowSize)
         {
             /* write only data replace. */
             ret = WriteRowDataOnly(tblInfo, originPage, newRowData, &(attrDataPos->headItem.itemData));
+            originPageIsDirty = HAT_FALSE;
         }
         else
         {
-            rowSize = sizeof(RowData) + attrDataPos->rowData.size;
-            
+            /* The rowsize will waste itemdata size if page is the same originpage. */
+            rowSize = attrDataPos->rowData.size + sizeof(ItemData);
             newRowPage = GetSpaceSpecifyPage(tblInfo, rowSize, PAGE_NEW, MAIN_FORK, originPage->header.pageNum, PAGE_DATA);
             if(NULL == newRowPage)
             {
@@ -204,16 +211,21 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
             else
             {
                 /* write new item and data in the extension page. */
-                ret = WriteRowItemDataWithHeader(tblInfo, newRowPage, newRowData, &rowheader);
+                ret = WriteRowItemDataWithHeader(tblInfo, newRowPage, newRowData);
 
                 /* old item chang to redirect flag. */
                 oldItem = GET_ITEM(attrDataPos->headItem.itemOffset, originPage);
                 oldItem->len |= ITEM_REDIRECT_MASK;
-                oldItem->offset = rowheader.rowPos.pageIndex.pageno;
-                oldItem->len = SetItemSize(oldItem->len, rowheader.rowPos.itemIndex);
-                WritePage(tblInfo, originPage, MAIN_FORK);
+                oldItem->offset = newRowData->rowPos.pageIndex.pageno;
+                oldItem->len = SetItemSize(oldItem->len, newRowData->rowPos.itemIndex);
+                originPageIsDirty = HAT_TRUE;
             }
         }
+
+        if(originPageIsDirty)
+        {
+            WritePage(tblInfo, originPage, MAIN_FORK);
+        }        
 
         /* every column will be release resource */
         if(NULL != undoPage)
@@ -234,20 +246,12 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
             newRowPage = NULL;
         }
 
-        if(NULL != oldTuple)
-        {
-            FreeMem(oldTuple);
-            oldTuple = NULL;
-        }
-
         /* some error ocur, then exited. */
         if(ret < 0)
         {
             break;
         }
     }
-
-    FreeMem(newRowData);
     
     return ret;
 }
@@ -259,6 +263,7 @@ int pax_ExecInsert(PExecState eState, PTableList tblInfo, PTableRowData insertda
     PTableRowData colRows = NULL; 
     PTableRowData currRows = NULL;
     PPageDataHeader page = NULL;
+    PRowData rowData = NULL;
     PModifyTblState planState = (PModifyTblState)eState->subPlanStateNode;
     PScanPageInfo scanPageInfo = NULL;
     int ColNum = 0;
@@ -270,6 +275,7 @@ int pax_ExecInsert(PExecState eState, PTableList tblInfo, PTableRowData insertda
     */
     scanPageInfo = planState->scanState->scanPostionInfo;
     pageList = scanPageInfo->pageList;
+    rowData = scanPageInfo->rowData;
 
     if(scanPageInfo->pageListNum < insertdata->num)
     {
@@ -293,14 +299,14 @@ int pax_ExecInsert(PExecState eState, PTableList tblInfo, PTableRowData insertda
         }
     } while (ret < 0);
 
-    /* Now, to form rows column by column. */
-    colRows = FormColRowsData(insertdata);
-
     /* insert into pages */
+    rowData->rowsData.num = 1;
     for(ColNum = 0; ColNum < insertdata->num; ColNum++)
     {
-        currRows = (PTableRowData)((char *) colRows + ColNum * itemsize);
-        ret = WriteRowItemData(tblInfo, pageList[ColNum], currRows);
+        rowData->rowsData.columnData[0] = insertdata->columnData[ColNum];
+        rowData->rowsData.size = insertdata->columnData[ColNum]->size;
+
+        ret = WriteRowItemDataWithHeader(tblInfo, pageList[ColNum], rowData);
     }
 
     /* resource release */
@@ -360,6 +366,9 @@ PTableRowData ExecTableModifyTbl(PExecState eState)
         if(NULL == rowData)
             break;
 
+        /* parent target rowdata. */
+        eState->scanRowDataRight = rowData;
+
         /* modify table data */
         switch(eState->commandType)
         {
@@ -371,9 +380,6 @@ PTableRowData ExecTableModifyTbl(PExecState eState)
             case CMD_UPDATE:
                 eState->subPlanNode = (PNode)plan->rightplan;
                 eState->subPlanStateNode = (PNode)planState->right; 
-
-                /* parent target rowdata. */
-                eState->scanRowDataRight = rowData;
 
                 /* excutor set list express. */
                 newRowData = ExecNodeProc(eState);

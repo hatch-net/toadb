@@ -24,8 +24,8 @@ typedef struct ExecState
     PNode       parentPlanNode;
     PNode       subPlanStateNode;       /* 当前正在处理的计划树状态节点 */
     PNode       parentPlanStateNode;
-    PTableRowData scanRowDataLeft;
-    PTableRowData scanRowDataRight;
+    PTableRowData scanRowDataLeft;      /* 当前得到的数据行 */
+    PTableRowData scanRowDataRight;     /* 当前得到的数据行 */
     int         isTop;
     int         retCode;
 }ExecState, *PExecState;

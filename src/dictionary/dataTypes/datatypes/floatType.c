@@ -16,11 +16,11 @@
 #include "dataTypeProc.h"
 #include <math.h>
 
-static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
-static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue);
+static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
+static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData);
 static int getfloatSize(PExprDataInfo value);
 
 
@@ -64,7 +64,7 @@ static int getfloatSize(PExprDataInfo value)
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
@@ -72,14 +72,14 @@ static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo
 
     if((first - seconde) > FLOAT_EPSILON)
         result =  HAT_TRUE;
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
@@ -88,14 +88,14 @@ static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDat
     first -= seconde;
     if((first > FLOAT_EPSILON) || fabs(first) < FLOAT_EPSILON)
         result =  HAT_TRUE;
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
@@ -104,14 +104,14 @@ static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo r
     first -= seconde;
     if(fabs(first) < FLOAT_EPSILON)
         result =  HAT_TRUE;
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
@@ -120,14 +120,14 @@ static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataIn
     first -= seconde;
     if((first < -FLOAT_EPSILON) || fabs(first) < FLOAT_EPSILON)
         result =  HAT_TRUE;    
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }
 
 /* 
  * 第一操作数的类型一定是匹配的；
  * 第二操作数的类型不同时，会转为第一操作数对应的类型 
 */
-static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue)
+static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     float first = leftvalue->data->fData;
     float seconde = rightvalue->data->fData;
@@ -136,5 +136,5 @@ static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo ri
     first -= seconde;
     if(first < -FLOAT_EPSILON)
         result =  HAT_TRUE;    
-    return getDataInfo(&result, VT_INT);
+    return getDataInfo(&result, VT_INT, resExprData);
 }

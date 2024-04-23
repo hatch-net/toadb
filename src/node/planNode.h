@@ -35,6 +35,7 @@ typedef struct NestLoop
     PNode       expr;         /* join expr */
     int         isJoin;
     int         mergeType;
+    int         rtNum;
     PList       targetList;   /* result columns */
 }NestLoop, *PNestLoop;
 

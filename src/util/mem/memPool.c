@@ -12,9 +12,6 @@
  * See the Mulan PSL v2 for more details.
 */
 
-/* 
- * 
- */
 
 #include "memPool.h"
 #include "public.h"
@@ -22,7 +19,7 @@
 
 #include <string.h>
 
-
+//#define hat_debug1 printf
 
 /* 内存上下文管理 */
 static PMemPoolManagerContext g_memPoolMangerContext = NULL;
@@ -124,7 +121,7 @@ static int AddPoolFreeList(PMemPageInfo mPage)
 
     g_memPoolMangerContext->totalSize += mPage->memPageSize;
 
-    hat_debug1("memory pool free size:%d \n", g_memPoolMangerContext->totalSize);
+    hat_debug("memory pool free size:%d \n", g_memPoolMangerContext->totalSize);
     return 0;
 }
 
@@ -360,7 +357,8 @@ static MemPtr AllocFromMemPage(PMemPageInfo mPage, int size)
     memb->memPage = mPage;
     memb->size = size;
 
-    hat_debug("alloc memblock %p, mem %p, memPage %p \n", memb, memb->ptr, memb->memPage);
+    hat_debug("alloc memPage %p memblock %p mem %p start %d-%d\n", 
+                    memb->memPage, memb, memb->ptr, mPage->useOffset-size, size);
     return (MemPtr)(memb->ptr);
 }
 
@@ -384,7 +382,8 @@ static int ReleaseToMemPage(PMemBlock memb)
     DList *header = NULL;
     int ret = 0;
 
-    hat_debug("release memblock %p, mem %p, memPage %p \n", memb, memb->ptr, memb->memPage);
+    hat_debug("release memPage %p memblock %p mem %p leve %d-%d\n", 
+                    memb->memPage, memb, memb->ptr, memPage->releaseSize, memb->size);
 
     memPage->releaseSize += memb->size;
 
@@ -394,6 +393,9 @@ static int ReleaseToMemPage(PMemBlock memb)
         memPageList = (PMemPageListInfo)memPage->memHead;
         header = &(memPageList->list);
         DelDListNode(&header, &(memPage->list));
+
+        hat_debug1("release empty memPage %p  leve %d-%d\n", 
+                    memPage, memPage->releaseSize, memPage->useOffset);
 
         ret = ReleaseMemPage(memPage);
     }

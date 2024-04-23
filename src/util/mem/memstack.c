@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+//#define hat_debug printf 
 
 /* 
  * 内存上下文的列表，总的内存上下文由g_MemList记录，

@@ -27,6 +27,10 @@ static int GetQueryId();
 static PNode CommonQueryTransform(PQueryState queryState);
 static PNode AddNormalTblNode(PRangTblEntry rangTbl, PList targetList);
 static PNode AddJoinTblNode(PList left, PRangTblEntry rangTbl, PList targetList);
+static int GetNodeRtNum(PNode node);
+static PList GetNodeTargetList(PNode node);
+static PList MergeNodeTargetList(PNode node1, PNode node2);
+
 static PList TargetRewriteAllColumns(PList targetList, PQueryState queryState);
 static PList TargetRewriteAllColumnsOneRte(PList targetList, PRangTblEntry rte);
 static PNode SearchColumDef(PNode colRef, PList rangTbl, PColumnDefInfo *colDef);
@@ -799,7 +803,7 @@ static PList TargetRewriteAllColumnsOneRte(PList targetList, PRangTblEntry rte)
 
         resTarget = NewNode(ResTarget);
         resTarget->val = (PNode)columnRefNode;
-        resTarget->name = NULL;
+        resTarget->name = columnRefNode->field;
         resTarget->indirection = NULL;
         resTarget->all = 0;
 
@@ -1077,11 +1081,14 @@ static PNode AddJoinTblNode(PList left, PRangTblEntry rangTbl, PList targetList)
     
         joinNode->joinOp = AND_EXPR;
         joinNode->rindex = -1;
-        joinNode->targetList = targetList;
 
         joinNode->lefttree = node;
         joinNode->righttree = AddNormalTblNode(rangTbl, targetList);
         joinNode->isJoin = 1;
+
+        joinNode->rtNum = GetNodeRtNum(joinNode->lefttree) + GetNodeRtNum(joinNode->righttree);
+        joinNode->targetList = MergeNodeTargetList(joinNode->lefttree, joinNode->righttree);
+        
         joinList = AppendNode(joinList, (PNode)joinNode);
     }
     else
@@ -1247,4 +1254,58 @@ PList MergetTargetList(PList target1, PList target2)
     }
 
     return result;
+}
+
+static int GetNodeRtNum(PNode node)
+{
+    int rtNum = 0;
+
+    switch(node->type)
+    {
+        case T_ExprEntry:
+            rtNum = ((PExprEntry)node)->rtNum;
+            break;
+        case T_JoinEntry:
+            rtNum = ((PJoinEntry)node)->rtNum;
+            break;
+        case T_MergerEntry:
+            rtNum = ((PMergerEntry)node)->rtNum;
+            break;
+        default:
+            break;
+    }
+    return rtNum;
+}
+
+static PList GetNodeTargetList(PNode node)
+{
+    PList targetList = NULL;
+
+    switch(node->type)
+    {
+        case T_ExprEntry:
+            targetList = ((PExprEntry)node)->targetList;
+            break;
+        case T_JoinEntry:
+            targetList = ((PJoinEntry)node)->targetList;
+            break;
+        case T_MergerEntry:
+            targetList = ((PMergerEntry)node)->targetList;
+            break;
+        default:
+            break;
+    }
+    return targetList;
+}
+
+static PList MergeNodeTargetList(PNode node1, PNode node2)
+{
+    PList mergeTarget = NULL;
+    PList targetList1 = NULL, targetList2 = NULL;
+
+    targetList1 = GetNodeTargetList(node1);
+    targetList2 = GetNodeTargetList(node2);
+
+    mergeTarget = MergetTargetList(targetList1, targetList2);
+    return mergeTarget;
 }

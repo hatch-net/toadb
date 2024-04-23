@@ -32,7 +32,8 @@ PScanState InitScanState(PTableList tblInfo, PScan scan)
 
     scanState->tblInfo = tblInfo;
     scanState->scanInfo = scan;
-
+    scanState->currentRowData = NULL;
+    
     return scanState;
 }
 
@@ -132,6 +133,7 @@ PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTable
     return result;
 }
 
+#if 0
 /*
  * getting rowdata, specified colmn infomation.
  */
@@ -195,6 +197,70 @@ PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef col
 
     return colRowData;
 }
+#endif 
+
+PRowColumnData GetColRowDataEx(PTableRowDataPosition tblRowPosition, PColumnRef colDef, PAttrDataPosition attrPosData, int rowIndex, int *found, int setUsed)
+{
+    PRowColumnData colData = NULL;
+    PHeapItemData heapItem = NULL;
+
+    int *colIndexArr = NULL;
+    int attrIndex = -1;
+    
+    int pageno = -1, pageOffset = -1;
+    int i = 0;
+
+    if((rowIndex < 0) || (rowIndex >= tblRowPosition->rowNum))
+    {
+        return NULL;
+    }
+
+    /* column index of table metadata. */
+    attrIndex = colDef->attrIndex;
+    if(attrIndex < 0)
+    {
+        return NULL;
+    }
+
+    /* coldata is already readed? */
+    colIndexArr = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->colindexList;
+    for(i = 0; i < tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageListNum; i++)
+    {
+        if(attrIndex == colIndexArr[i])
+        {
+            colData = tblRowPosition->rowDataPosition[rowIndex]->rowData->columnData[i];
+
+            if(setUsed)
+                tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->colInusedList[i] = HAT_TRUE;
+            
+            if(NULL != attrPosData)
+            {
+                attrPosData->headItem.pageno.pageno = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageList[i]->header.pageNum;
+                attrPosData->headItem.itemOffset = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->searchPageList->item_offset;
+                attrPosData->headItem.itemData = *((PItemData)GET_ITEM(attrPosData->headItem.itemOffset, 
+                                            tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageList[i]));
+            }
+
+            *found = HAT_TRUE;
+            return colData;
+        }
+    }
+    
+    /* below code, it maybe run repeatly at one column data, which not in rang table's target list. */
+    /* coldata read from page. */
+    if(tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->pageListNum > 0)
+        pageOffset = tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->searchPageList->item_offset;
+
+    pageno = GetPageNoFromGroupInfo(&(tblRowPosition->rowDataPosition[rowIndex]->scanPostionInfo->groupPageInfo), attrIndex);
+
+    if(NULL != attrPosData)
+        heapItem = &(attrPosData->headItem);
+        
+    colData = GetRowDataFromPageByIndexEx(tblRowPosition->tblInfo, pageno, pageOffset, heapItem);
+
+    *found = HAT_FALSE;
+    return colData;
+}
 
 
 /*
@@ -202,11 +268,11 @@ PTableRowData GetColRowData(PTableRowDataPosition tblRowPosition, PColumnRef col
  * 从行数据中获取一列的值
  * 反之回值结构
  */
-Data * TranslateRawColumnData(PTableRowData rawRows, PColumnRef colDef)
+Data * TranslateRawColumnData(PRowColumnData colData, PColumnRef colDef, Data *dataValue)
 {
     Data *pvalue = NULL;	 
 
-    pvalue = (Data *)AllocMem(sizeof(Data));
+    pvalue = dataValue;
 
     switch(colDef->vt)
     {
@@ -215,7 +281,7 @@ Data * TranslateRawColumnData(PTableRowData rawRows, PColumnRef colDef)
         {
             int *tmp = NULL;
 
-            tmp = (int *)(rawRows->columnData[0]->data);
+            tmp = (int *)(colData->data);
             pvalue->iData = *tmp;
         }
         break;
@@ -223,9 +289,9 @@ Data * TranslateRawColumnData(PTableRowData rawRows, PColumnRef colDef)
         case VT_VARCHAR:
         case VT_STRING:
         {
-            int len = rawRows->columnData[0]->size;
+            int len = colData->size;
             pvalue->pData = (void*)AllocMem(len);
-            memcpy(pvalue->pData, rawRows->columnData[0]->data, len);
+            memcpy(pvalue->pData, colData->data, len);
         }
         break;
 
@@ -236,20 +302,20 @@ Data * TranslateRawColumnData(PTableRowData rawRows, PColumnRef colDef)
             pvalue->pData = (void*)AllocMem(len);
             memset(pvalue->pData, 0x00, len);
 
-            memcpy(pvalue->pData, rawRows->columnData[0]->data, len-1);
+            memcpy(pvalue->pData, colData->data, len-1);
         }
         break;
 
         case VT_DOUBLE:
         case VT_FLOAT:
         {
-            float *tmp = (float *)(rawRows->columnData[0]->data);
+            float *tmp = (float *)(colData->data);
             pvalue->fData = *tmp;
         }
         break;
         
         case VT_BOOL:                
-            pvalue->iData = rawRows->columnData[0]->data[0] == 'T' ? 1:0;
+            pvalue->iData = colData->data[0] == 'T' ? 1:0;
         break;
 
         default:

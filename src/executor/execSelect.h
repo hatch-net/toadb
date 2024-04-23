@@ -19,6 +19,16 @@
 #include "executor.h"
 #include "tables.h"
 
+typedef struct SelectExpreData
+{
+    PExprDataInfo leftExpreData;
+    PExprDataInfo righExpreData;
+    PExprDataInfo resultExpreData;
+
+}SelectExpreData, *PSelectExpreData;
+
+PSelectExpreData InitSelectExpreData();
+void SwitchToResultExpreData(PExprDataInfo *other, PExprDataInfo *result);
 
 PTableRowData ExecSelect(PExecState eState);
 

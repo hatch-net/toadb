@@ -37,7 +37,7 @@ int OpenTableFile(char *filename, int mode);
 
 
 
-PTableRowData ExecMergeRowData(PExecState eState);
+
 
 int ExecRowDataCompare(PExecState eState);
 
