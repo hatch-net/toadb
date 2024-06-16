@@ -46,7 +46,7 @@ function testSimpleQuery()
 function testSimple() 
 {    
     excuteSql "insert into student(sid,sname) values(1,'lilei'),(2,'wangming'),(3,'hanmeimei'),(4,'markhu');"
-    #testSimpleQuery;
+    testSimpleQuery;
 }
 
 function restoreSimple()
@@ -89,7 +89,7 @@ function testMultiFromClause()
     excuteSql "insert into course values(1,'e'),(2,'h'),(3,'f'),(4,'o');"
     excuteSql "insert into timetable values(1,1,1),(2,3,2),(3,2,1),(4,3,4);"
 
-   # testQueyqualClause;
+    testQueyqualClause;
 }
 
 function testStudent()

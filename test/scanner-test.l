@@ -31,37 +31,37 @@ identify    [a-zA-Z][a-zA-Z0-9_]*
 
 %%
 select  { 
-            printf("--select \n"); 
+            printf("--select "); 
         }
 from    {
-            printf("--from \n"); 
+            printf("--from "); 
         }
 create  {
-            printf("--CREATE\n"); 
+            printf("--CREATE"); 
         }
 update  {
-            printf("--update\n"); 
+            printf("--update"); 
         }
 insert  {
-           printf("--insert\n"); 
+           printf("--insert"); 
         }
 delete  {
-            printf("--delete\n"); 
+            printf("--delete"); 
         }
 drop    {
-           printf("--drop\n"); 
+           printf("--drop"); 
         }
 {identify}        {
-                    printf("ident :%s\n", yytext); 
+                    printf("ident :%s", yytext); 
                 } 
 {operator}        {
-                    printf("op:%c\n",yytext[0]); 
+                    printf("op:%c",yytext[0]); 
                 }
 {endtag}          {
-                    printf("end:%c\n",yytext[0]); 
+                    printf("end:%c",yytext[0]); 
                 }
 {seperate}        {
-                    printf("se:%c\n",yytext[0]); 
+                    printf("se:%c",yytext[0]); 
                 }               
 {space}           {
                     /* ignore */
@@ -74,15 +74,15 @@ int main(int argc, char * argv[])
 {
     /*            | drop_stmt
                     {
-                        printf("drop stmt\n");
+                        printf("drop stmt");
                     }
             | insert_stmt
                     {
-                        printf("insert stmt\n");
+                        printf("insert stmt");
                     }
             | delete_stmt
                     {
-                        printf("delete stmt\n");
+                        printf("delete stmt");
                     }
 */    
     yylex();

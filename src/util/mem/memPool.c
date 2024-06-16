@@ -18,12 +18,15 @@
 #include "memStack.h"
 
 #include <string.h>
+#include <stdlib.h>
 
-//#define hat_debug1 printf
+#define hat_debug1_memPool(...)   
+#define hat_debug1(...)  
+#define hat_debug(...)  
+//#define hat_debug1_memPool(...)  log_report(LOG_DEBUG, __VA_ARGS__) 
 
 /* 内存上下文管理 */
 static PMemPoolManagerContext g_memPoolMangerContext = NULL;
-
 
 /* inner call */
 static void *MM_AllocMem(unsigned int size);
@@ -48,13 +51,18 @@ static int AddMemPageToContext(PMemPageInfo memPage, PMemPoolContextInfo context
 
 static int AddNewPageToContext(PMemPoolContextInfo poolContext);
 
+static void LockMemPoolContext();
+static void UnLockMemPoolContext();
+
 int InitializeMemPool()
 {
     g_memPoolMangerContext = MM_AllocMem(sizeof(MemPoolManagerContext));
     g_memPoolMangerContext->version = MEMORY_POOL_MANAGER_VERSION;
     g_memPoolMangerContext->totalSize = 0;
+    
     INIT_DLIST_NODE(g_memPoolMangerContext->memFreeList);
-
+    
+    SpinLockInit(&g_memPoolMangerContext->lock);
     return 0;
 }
 
@@ -97,10 +105,23 @@ static MemPage GetFreeMemPage()
     if(g_memPoolMangerContext->totalSize <= 0)
         return 0;
 
+    LockMemPoolContext();
+
+    /* recheck */
+    if(g_memPoolMangerContext->totalSize <= 0)
+    {
+        UnLockMemPoolContext();
+        return 0;
+    }
+
     headNode = &(g_memPoolMangerContext->memFreeList);
     mPage = (PMemPageInfo)PopDListTailNode(&headNode);
 
     g_memPoolMangerContext->totalSize -= mPage->memPageSize;
+
+    UnLockMemPoolContext();
+
+    hat_debug1("totalSize:%lu - mPage:%p", g_memPoolMangerContext->totalSize, mPage);
     return (MemPage)mPage;
 }
 
@@ -116,12 +137,18 @@ static int AddPoolFreeList(PMemPageInfo mPage)
         return -1;
     }
 
+    /* TODO: test */
+    MM_FreeMem(mPage);
+    return 0;
+
+    LockMemPoolContext();
     headNode = &(g_memPoolMangerContext->memFreeList);
     AddDListTail(&headNode, (PDList)mPage);
 
     g_memPoolMangerContext->totalSize += mPage->memPageSize;
-
-    hat_debug("memory pool free size:%d \n", g_memPoolMangerContext->totalSize);
+    UnLockMemPoolContext();
+    
+    hat_debug1("total free size:%d addpage:%p", g_memPoolMangerContext->totalSize, mPage);
     return 0;
 }
 
@@ -130,7 +157,7 @@ static MemPage NewMemPage(int size)
     MemPage mpage = NULL;
     
     mpage = MM_AllocMem(size);
-    
+    hat_debug1_memPool("new alloc size:%d ", size);
     return mpage;
 }
 
@@ -155,7 +182,7 @@ MemPtr AllocFromMemPool(unsigned int size)
     currentMemContext = GetMemPoolCurrentContext();
     if(NULL == currentMemContext)
     {
-        hat_error("current memory context is NULL.\n");
+        hat_error("current memory context is NULL.");
         return NULL;
     }
 
@@ -210,6 +237,22 @@ static int AddNewPageToContext(PMemPoolContextInfo poolContext)
  * get a memory page;
  * alloc context structure;
  * add page to this new context;
+ * 
+ * first mempage
+ * [MemPageInfo | MemBlock，ptr[memPoolContextInfo] | MemBlock .... ]
+ * second mempage
+ * [MemPageInfo | MemBlock ... ]
+ * 
+ * memPoolContextInfo
+ * [ memPageNode-> list (header dlink of memPages of this current, 
+ *          second node is first memPage, which is current memPage.)]
+ * 
+ * MemPageInfo
+ * | list (prev, next) , link all mempage in this context    | 
+ * 
+ * MemBlock
+ * [ memPage (pointer to current mempage header )]
+ * 
  */
 PMemPoolContextInfo NewPoolMemContext()
 {
@@ -343,6 +386,8 @@ static PDList AddMemPageNode(PDList list, PMemPageInfo node)
     PDList newHead = NULL;
 
     AddDListTail(&list, (PDList)node);
+
+    hat_debug1(" add mempage:%p (node->memHead:%p) head:%p", node, node->memHead, list);
     return list;
 }
 
@@ -357,7 +402,7 @@ static MemPtr AllocFromMemPage(PMemPageInfo mPage, int size)
     memb->memPage = mPage;
     memb->size = size;
 
-    hat_debug("alloc memPage %p memblock %p mem %p start %d-%d\n", 
+    hat_debug("alloc memPage %p memblock %p mem %p start %d-%d", 
                     memb->memPage, memb, memb->ptr, mPage->useOffset-size, size);
     return (MemPtr)(memb->ptr);
 }
@@ -382,8 +427,14 @@ static int ReleaseToMemPage(PMemBlock memb)
     DList *header = NULL;
     int ret = 0;
 
-    hat_debug("release memPage %p memblock %p mem %p leve %d-%d\n", 
+    hat_debug("release memPage %p memblock %p mem %p leve %d-%d", 
                     memb->memPage, memb, memb->ptr, memPage->releaseSize, memb->size);
+
+    if(NULL == memPage)
+    {
+        hat_error("mempage pointer is null. memblock:%p", memb);
+        return -1;
+    }
 
     memPage->releaseSize += memb->size;
 
@@ -392,10 +443,10 @@ static int ReleaseToMemPage(PMemBlock memb)
         /* release mempage to free list */
         memPageList = (PMemPageListInfo)memPage->memHead;
         header = &(memPageList->list);
-        DelDListNode(&header, &(memPage->list));
+        ret = DelDListNode(&header, &(memPage->list));
 
-        hat_debug1("release empty memPage %p  leve %d-%d\n", 
-                    memPage, memPage->releaseSize, memPage->useOffset);
+        hat_debug1("release empty memPage %p  leve %d-%d, memb:%p ret:%d", 
+                    memPage, memPage->releaseSize, memPage->useOffset, memb, ret);
 
         ret = ReleaseMemPage(memPage);
     }
@@ -411,6 +462,15 @@ static PMemPoolContextInfo GetMemPoolCurrentContext()
     return memPoolContext;
 }
 
+static void LockMemPoolContext()
+{
+    SpinLockAquire(&g_memPoolMangerContext->lock);
+}
+
+static void UnLockMemPoolContext()
+{
+    SpinLockRelease(&g_memPoolMangerContext->lock);
+}
 
 /* memory manager inner call */
 static void *MM_AllocMem(unsigned int size)
@@ -427,7 +487,7 @@ static void *MM_AllocMem(unsigned int size)
     pMem = (char *)malloc(size);
     if(NULL == pMem)
     {
-        hat_log("alloc mem %d failure. \n", size);
+        hat_log("alloc mem %d failure. ", size);
         exit(-1);
     }
 
@@ -453,7 +513,7 @@ static void *MM_AllocMem(unsigned int size)
     /* zero user space */
     memset(pMem, 0x00, size);
 
-    hat_debug("Memory manager Alloc[%p] size[%d]\n", start, total);
+    hat_debug("Memory manager Alloc[%p] size[%d]", start, total);
 #endif
     
     return (void *)pMem;
@@ -474,12 +534,12 @@ static int MM_FreeMem(void *pMem)
     freeMem = pMem;
     freeMem -= DEBUG_MEM_BARRIER_SIZE;
     size = *((unsigned int*)(freeMem+DEBUG_MEM_TYPE_SIZE));
-    hat_debug("User Memory free[%p] size[%d]\n", pMem, size);
+    hat_debug("User Memory free[%p] size[%d]", pMem, size);
 
     pMem = freeMem;
 #endif 
 
-    hat_debug("Memory manager free address %p\n", pMem);
+    hat_debug("Memory manager free address %p", pMem);
     free(pMem);
 
     return 0;

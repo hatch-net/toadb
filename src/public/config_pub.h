@@ -57,4 +57,17 @@
 extern int config_fsync;
 
 extern int pageNum;
+
+/* 
+ *  connection parameters
+ */
+extern int servPort;
+extern char servIP[];
+
+
+/* 
+ * logger config
+*/
+extern int logLevel;    /* logger.h */
+
 #endif 

@@ -15,8 +15,8 @@
 #include "resourceMgr.h"
 #include "memStack.h"
 
-PResourceOnwerPool resourceOnwerPool = NULL;
-PMemContextNode resourceMemContext = NULL;
+extern __thread PResourceOnwerPool resourceOnwerPool ;
+extern __thread PMemContextNode resourceMemContext;
 
 static PResourceOwnerNode GetResourceOwnerNode();
 static int AddResourceOwnerNodeToFreeList(PResourceOwnerNode node);

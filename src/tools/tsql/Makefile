@@ -13,7 +13,6 @@ topdir = .
 topsrcdir = $(topdir)/../..
 SRC_DIR=$(topdir)
 
-
 # filter-out source code directory 
 OUT_SRC_DIR = $(topsrcdir)/tools $(topsrcdir)/main
 OUT_DIR = $(foreach dir, $(OUT_SRC_DIR), $(shell find $(dir) -maxdepth 5 -type d))
@@ -23,7 +22,9 @@ DIR_DISP = $(foreach dir, $(OUT_DIR), $(wildcard $(dir)/*.c))
 # general source file list , and objects list
 DIR_ALL =  $(shell find $(topsrcdir) -maxdepth 5 -type d)
 SOURCE = $(filter-out $(DIR_DISP), $(foreach dir, $(DIR_ALL), $(wildcard $(dir)/*.c)))
+CURSOURCE = $(wildcard $(topdir)/*.c)
 
+SOURCE += ${CURSOURCE}
 # search all directory and subdirectory
 INC_DIR = $(DIR_ALL)
 
@@ -57,19 +58,23 @@ all: $(default) $(OBJS) $(TARGET)
 
 
 # object compile to O_PATH
-.c.o: $(SOURCE) 
-	$(CC) $(CFLAGS) -c $<
+#.c.o: $(SOURCE) 
+#	$(CC) $(CFLAGS) -c $<
 
-$(TARGET): $(topdir)/*.o  
+$(TARGET):$(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@
+
+#$(TARGET): $(topdir)/*.o  
+#	$(CC) $(CFLAGS) $^ -o $@
 
 # show various value
 default:
-	@echo -e "DIRS "$(DIRS)
+#	@echo -e "DIRS "$(DIRS)
 	@echo -e "SOURCE "$(SOURCE)
-	@echo -e "OBJS "$(OBJS)
-	@echo -e "INC "$(INC)
-	@echo -e "DIR_DISP "$(DIR_DISP)
+	@echo -e "CURSOURCE "${CURSOURCE}
+#	@echo -e "OBJS "$(OBJS)
+#	@echo -e "INC "$(INC)
+#	@echo -e "DIR_DISP "$(DIR_DISP)
 
 clean:
 	rm -rf ${TARGET} ${OBJS}  $(topdir)/*.o 

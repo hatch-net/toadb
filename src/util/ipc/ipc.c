@@ -13,46 +13,39 @@
 */
 #include "ipc.h"
 #include "public.h"
-
+#include "semphore.h"
 
 #include <sys/shm.h>
 #include <errno.h>
 #include <unistd.h>
-#include <semaphore.h>
 #include <fcntl.h>
 
 
 int sharemid = -1;
-sem_t *readsem = NULL;
-sem_t *writesem = NULL;
-sem_t *clientsem = NULL;
+SemLock readsem ;
+SemLock writesem ;
+SemLock clientsem ;
 
 static int InitializeShareMem(char **ptr);
-static sem_t *InitializeSem(char *name, int initValue);
 
-static int DestorySem(char *name, sem_t *sem);
-static int CloseSem(sem_t *sem);
-
-static int WaitSem(sem_t *sem);
-static int PostSem(sem_t *sem);
 
 int InitServerSharedEnv(char **ptr)
 {
     int ret = 0;
 
     ret = InitializeShareMem(ptr);
-    readsem = InitializeSem(TOADB_SHARED_SEM_READ_ID, 0);
-    writesem = InitializeSem(TOADB_SHARED_SEM_WRITE_ID, 1);
-    clientsem = InitializeSem(TOADB_SHARED_SEM_CLIENT_ID, 1);
+    InitializeSem(TOADB_SHARED_SEM_READ_ID, 0, &readsem);
+    InitializeSem(TOADB_SHARED_SEM_WRITE_ID, 1, &writesem);
+    InitializeSem(TOADB_SHARED_SEM_CLIENT_ID, 1, &clientsem);
 
     return ret;
 }
 
 int DestorySeverSharedEnv(char **ptr)
 {
-    DestorySem(TOADB_SHARED_SEM_WRITE_ID,writesem);
-    DestorySem(TOADB_SHARED_SEM_READ_ID,readsem);
-    DestorySem(TOADB_SHARED_SEM_CLIENT_ID,clientsem);
+    DestorySem(TOADB_SHARED_SEM_WRITE_ID, &writesem);
+    DestorySem(TOADB_SHARED_SEM_READ_ID, &readsem);
+    DestorySem(TOADB_SHARED_SEM_CLIENT_ID, &clientsem);
 
     // 从共享内存中分离并删除共享内存对象  
     if(NULL != *ptr)
@@ -69,18 +62,18 @@ int InitClientSharedEnv(char **ptr)
     int ret = 0;
 
     ret = InitializeShareMem(ptr);
-    readsem = InitializeSem(TOADB_SHARED_SEM_READ_ID, 0);
-    writesem = InitializeSem(TOADB_SHARED_SEM_WRITE_ID, 1);
-    clientsem = InitializeSem(TOADB_SHARED_SEM_WRITE_ID, 1);
+    InitializeSem(TOADB_SHARED_SEM_READ_ID, 0, &readsem);
+    InitializeSem(TOADB_SHARED_SEM_WRITE_ID, 1, &writesem);
+    InitializeSem(TOADB_SHARED_SEM_CLIENT_ID, 1, &clientsem);
 
     return ret;
 }
 
 int DestoryClientSharedEnv(char **ptr)
 {
-    CloseSem(writesem);
-    CloseSem(readsem);
-    CloseSem(clientsem);
+    CloseSem(&writesem);
+    CloseSem(&readsem);
+    CloseSem(&clientsem);
 
     // 从共享内存中分离并删除共享内存对象  
     if(NULL != *ptr)
@@ -94,37 +87,37 @@ int DestoryClientSharedEnv(char **ptr)
 
 int WaitClientDataArrive()
 {
-    WaitSem(readsem);
+    WaitSem(&readsem);
     return 0;
 }
 
 int NotifyClientReadData()
 {
-    PostSem(writesem);
+    PostSem(&writesem);
     return 0;
 }
 
 int NotifyServerReadData()
 {
-    PostSem(readsem);
+    PostSem(&readsem);
     return 0;
 }
 
 int WaitServerDataArrive()
 {
-    WaitSem(writesem);
+    WaitSem(&writesem);
     return 0;
 }
 
 int WaitClientControlLock()
 {
-    WaitSem(clientsem);
+    WaitSem(&clientsem);
     return 0;
 }
 
 int ReleaseClientControlLock()
 {
-    PostSem(clientsem);
+    PostSem(&clientsem);
     return 0;
 }
 
@@ -145,63 +138,11 @@ static int InitializeShareMem(char **ptr)
     shmem = shmat(sharemid, 0, 0);
     if ( (void*)-1 == shmem)
     {
-        hat_error("error in init\n");
+        hat_error("error in init");
         return -1;
     }
 
     *ptr = shmem;
 
     return 0;
-}
-
-static sem_t *InitializeSem(char *name, int initValue)
-{
-    sem_t *readsem = NULL;
-
-    readsem = sem_open(name, O_CREAT , 0666, initValue);
-    if(SEM_FAILED == readsem)
-    {
-        hat_error("create sem failure.\n");
-        return NULL;
-    }
-
-    return readsem;
-}
-
-static int DestorySem(char *name, sem_t *sem)
-{
-    if(NULL == sem)
-    {
-        return -1;
-    }
-
-    sem_close(sem);
-    unlink(name);
-    return 0;
-}
-
-
-static int CloseSem(sem_t *sem)
-{
-    if(NULL == sem)
-    {
-        return -1;
-    }
-
-    sem_close(sem);
-    return 0;
-}
-
-static int WaitSem(sem_t *sem)
-{
-    if(NULL == sem)
-        return -1;
-    return sem_wait(sem);
-}
-
-static int PostSem(sem_t *sem)
-{
-    if(NULL == sem)
-        return -1;
-    return sem_post(sem);
 }

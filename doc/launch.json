@@ -1,0 +1,66 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "cwd": "/home/senllang/Dev/toadb/src/toadmain",
+      "program": "/home/senllang/Dev/toadb/src/toadmain/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "toadbserver",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [
+          "-M",
+          "1"
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "cwd": "/home/senllang/Dev/toadb/src/",
+      "program": "/home/senllang/Dev/toadb/src/toadb-0-01",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "client",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "cwd": "/home/senllang/Dev/toadb/src/",
+      "program": "/home/senllang/Dev/toadb/src/tools/tsql/toadsql",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

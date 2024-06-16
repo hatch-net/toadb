@@ -106,35 +106,35 @@ function tpcb() {
     local aid=$3
     local delta=$4
 
-# "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
-# "SELECT abalance FROM toad_accounts WHERE aid = :aid;\n"
-# "UPDATE toad_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
-# "UPDATE toad_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
-# "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+# "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;"
+# "SELECT abalance FROM toad_accounts WHERE aid = :aid;"
+# "UPDATE toad_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;"
+# "UPDATE toad_branches SET bbalance = bbalance + :delta WHERE bid = :bid;"
+# "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);"
 
     local datetime=`date`
 
-    # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+    # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;"
     local sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
     local sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}" > /dev/null
 
-    # "SELECT abalance FROM toad_accounts WHERE aid = :aid;\n"
+    # "SELECT abalance FROM toad_accounts WHERE aid = :aid;"
     sql="SELECT abalance FROM toad_accounts WHERE aid = ${aid};"
     sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}" > /dev/null
 
-    # "UPDATE toad_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
+    # "UPDATE toad_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;"
     sql="UPDATE toad_tellers SET tbalance = tbalance + ${delta} WHERE tid = ${tid};"
     sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}"  > /dev/null
 
-    # "UPDATE toad_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
+    # "UPDATE toad_branches SET bbalance = bbalance + :delta WHERE bid = :bid;"
     sql="UPDATE toad_branches SET bbalance = bbalance + ${delta} WHERE bid = ${bid};"
     sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}"  > /dev/null
 
-    # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+    # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);"
     sql="INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (${tid}, ${bid}, ${aid}, ${delta}, '${datetime}');"
     sql_command="${toad_executor_command} \"${sql}\" "  
     sh -c "${sql_command}"  > /dev/null
@@ -144,9 +144,9 @@ function tpcb() {
 # return null
 function updatetest() {
 
-# "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
-# "SELECT abalance FROM toad_history WHERE aid = :aid;\n"
-# "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n" 
+# "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;"
+# "SELECT abalance FROM toad_history WHERE aid = :aid;"
+# "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);" 
     
     local bid=$1
     local tid=$2
@@ -155,17 +155,17 @@ function updatetest() {
 
     local datetime=`date`
     
-    # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+    # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;"
     local sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
     local sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}" > /dev/null
 
-    # "SELECT abalance FROM toad_history WHERE aid = :aid;\n"
+    # "SELECT abalance FROM toad_history WHERE aid = :aid;"
     sql="SELECT abalance FROM toad_history WHERE aid = ${aid};"
     sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}"  > /dev/null
 
-    # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+    # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);"
     sql="INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (${tid}, ${bid}, ${aid}, ${delta}, '${datetime}');"
     sql_command="${toad_executor_command} \"${sql}\" "
     sh -c "${sql_command}" > /dev/null
@@ -176,7 +176,7 @@ function updatetest() {
 # return null
 function onlyselect() {
 
-# "SELECT abalance FROM uxbench_accounts WHERE aid = :aid;\n"
+# "SELECT abalance FROM uxbench_accounts WHERE aid = :aid;"
     local aid=$1
 
     # SELECT abalance FROM uxbench_accounts WHERE aid = :aid;

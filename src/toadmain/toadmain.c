@@ -18,6 +18,7 @@
 #include <string.h>
 #include <pwd.h>
 #include <getopt.h>      
+#include <signal.h>
 
 #include <sys/types.h>
 #include <fcntl.h> 
@@ -32,7 +33,9 @@
 #include "memStack.h"
 #include "config_pub.h"
 #include "ipc.h"
-#include "resourceMgr.h"
+#include "logger.h"
+#include "servprocess.h"
+#include "workermain.h"
 
 #define hat_log printf
 
@@ -40,8 +43,9 @@
 
 char *DataDir = "./toadbtest";
 int runMode = TOADSERV_RUN_CLIENT_SERVER;
-int pageNum = 16;
+int pageNum = 64;
 
+PMemContextNode topMemContext = NULL;
 PMemContextNode dictionaryContext = NULL;
 PMemContextNode memPoolContext = NULL;
 
@@ -57,6 +61,9 @@ static void exitServerProc();
 
 static int WriteResultData(char *result);
 
+static int StartToadbServiceWithThread();
+static int RunToadbCSModeServerDemon();
+
 /* 
  * toadb数据库服务入口，进行SQL解析，执行 
  */
@@ -68,7 +75,7 @@ int toadbMain(int argc, char *argv[])
     ShowToadbInfo();
     if(checkDataDir() < 0)
     {
-        hat_log("Data directory is invalid.\n");
+        hat_log("Data directory is invalid.");
 
         return -1;
     }
@@ -82,6 +89,8 @@ int toadbMain(int argc, char *argv[])
         case TOADSERV_RUN_ONLY_SERVER:
             ToadbServerMain(argc, argv);
         break;
+        case TOADSERV_CS_MODE_SERVER:
+            ToadbCSModeServerMain(argc,argv);
         default:
         break;
     }
@@ -91,6 +100,14 @@ int toadbMain(int argc, char *argv[])
 int ToadbServerMain(int argc, char *argv[]) 
 {
     RunToadbServerDemon();
+    return 0;
+}
+
+int ToadbCSModeServerMain(int argc, char *argv[]) 
+{
+    signal(SIGPIPE, SIG_IGN);
+
+    RunToadbCSModeServerDemon();
     return 0;
 }
 
@@ -108,13 +125,40 @@ int RunToadbServerDemon()
     if(pid == 0)
     {
         /* child process */
-        printf("start toadb service ...\n");
+        printf("start toadb service ...");
         StartToadbService();
     }
     else if(pid < 0)
     {
         /* error */
-        printf("start toadb service error, when process fork.\n");
+        printf("start toadb service error, when process fork.");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int RunToadbCSModeServerDemon()
+{
+    int pid = 0;
+
+    /* check server demon is running. */
+    if(ToadbServiceRunning())
+    {
+        return 0;
+    }
+
+    //pid = fork();
+    if(pid == 0)
+    {
+        /* child process */
+        printf("start toadb service ...");
+        StartToadbServiceWithThread();
+    }
+    else if(pid < 0)
+    {
+        /* error */
+        printf("start toadb service error, when process fork.");
         return -1;
     }
 
@@ -188,14 +232,14 @@ int StartToadbService()
     atexit(exitServerProc);
 
     InitToad();
-    
+    InitWorker();
     do
     {
         WaitClientData();
 
         if(clientSharedInfo->command == CLIENT_SERVICE_STOP_COMMAND)
         {
-            hat_log("exit taodb service now...\n");
+            hat_log("exit taodb service now...");
             break;
         }
 
@@ -210,10 +254,19 @@ int StartToadbService()
         SendFinishAndNotifyClient();
     } while (1);
     
+    ExitWorker();
     ExitToad();
 
     DestorySeverSharedEnv((char**)&clientSharedInfo);
 
+    return 0;
+}
+
+static int StartToadbServiceWithThread()
+{
+    InitToad();
+    WorkerMain();
+    ExitToad();
     return 0;
 }
 
@@ -271,7 +324,7 @@ static int ToadSingClientMain()
     char command[MAX_COMMAND_LENGTH];
 
     InitToad();
-
+    InitWorker();
     while (1) 
     {
         ReadCommandLine(command);
@@ -282,7 +335,7 @@ static int ToadSingClientMain()
 
         ToadMainEntry(command);
     }
-
+    ExitWorker();
     ExitToad();
 
     return 0;
@@ -301,6 +354,7 @@ int ToadMainEntry(char *query)
     parserTree = raw_parser(query);
     if(NULL == parserTree)
     {
+        SendToPortStr(GetServPortal(), "Sytax is wrong, parser error.");
         return -1;
     }
 #ifdef PARSER_TREE_PRINT
@@ -312,6 +366,7 @@ int ToadMainEntry(char *query)
     queryTree = QueryAnalyzeAndRewrite(parserTree);
     if(NULL == queryTree)
     {
+        SendToPortStr(GetServPortal(), "object may be not found, query error.");
         return -1;
     }
 
@@ -324,6 +379,7 @@ int ToadMainEntry(char *query)
     planTree = QueryPlan(queryTree);
     if(NULL == planTree)
     {
+        SendToPortStr(GetServPortal(), "planner error.");
         return -1;
     }
 #ifdef PARSER_TREE_PRINT
@@ -348,13 +404,22 @@ int ToadMainEntry(char *query)
 int InitToad()
 {
     PMemContextNode oldContext = NULL;
+    int ret = 0;
     
+    /* logger init */
+    ret = SyslogInit();
+    if(ret < 0)
+    {
+        hat_error("syslog init error!");
+        exit(0);
+    }
+
     /* Memory Context Manager Initialize at the head. */
     MemMangerInit(); 
 
     /* initialize memory pool context. */
-    oldContext = MemMangerNewContext("memoryPool");
-    memPoolContext = MemMangerSwitchContext(oldContext);
+    topMemContext = MemMangerNewContext("memoryPool");
+    memPoolContext = MemMangerSwitchContext(topMemContext);
     
     /* initialize dictionary memory context. */
     oldContext = MemMangerNewContext("dictionaryTop");
@@ -364,8 +429,8 @@ int InitToad()
     CreateBufferPool(pageNum);
     dictionaryContext = MemMangerSwitchContext(oldContext);
 
-    CreateResourceOwnerPool();
-
+    /* initialize dictionary info */
+    InitTblInfo();
     return 0;
 }
 
@@ -373,8 +438,13 @@ int ExitToad()
 {
     /* 释放系统字典占用的内存资源 */
     ReleaseAllTblInfoResource();
+    
+    /* 释放bufferpool 锁资源 */
+    DestroyBufferPool();
 
     MemMangerDestroy();
+
+    SyslogDestroy();
     return 0;
 }
 
@@ -383,7 +453,7 @@ int checkDataDir()
     // 检查文件是否存在
     if (access(DataDir, F_OK) != 0) 
     {
-        // hat_log("table file %s is not exist. \n", filepath);
+        // hat_log("table file %s is not exist. ", filepath);
         return -1;
     }
 
@@ -442,7 +512,7 @@ void ShowToadbInfo()
     
     /* current director path */
     cwd = getcwd(NULL, 0);
-    // printf("cwd :%s\n", cwd);
+    // printf("cwd :%s", cwd);
     free(cwd);
 
     /* Datadir */

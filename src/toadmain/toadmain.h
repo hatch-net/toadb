@@ -26,6 +26,7 @@ typedef enum enServRunMode
 {
     TOADSERV_RUN_CLIENT_SERVER,
     TOADSERV_RUN_ONLY_SERVER,
+    TOADSERV_CS_MODE_SERVER,
     TOADSERV_RUN_INVALID
 }enServRunMode;
 
@@ -43,6 +44,7 @@ typedef enum enClientCommand
 int toadbMain(int argc, char *argv[]) ;
 
 int ToadbServerMain(int argc, char *argv[]) ;
+int ToadbCSModeServerMain(int argc, char *argv[]) ;
 
 int RunToadbServerDemon();
 int ToadbServiceRunning();

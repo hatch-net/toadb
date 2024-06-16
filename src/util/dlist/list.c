@@ -5,7 +5,7 @@
 
 #include "list.h"
 #include "buffer.h"
-
+#include "memStack.h"
 #include <stdio.h>
 
 
@@ -24,6 +24,7 @@ int AddDListTail(PDList *list, PDList cell)
 {
     PDList head = NULL;
     PDList node = (PDList)(cell);
+    int ret = 0;
 
     if(NULL == *list) 
     { 
@@ -32,6 +33,7 @@ int AddDListTail(PDList *list, PDList cell)
         head->next = head; 
 
         *list = head;
+        ret = 1;
     }
     else 
     { 
@@ -42,7 +44,7 @@ int AddDListTail(PDList *list, PDList cell)
         head->prev = node; 
     }
     
-    return 0;
+    return ret;
 }
 
 int AddDListNext(PDList *list, PDList cell) 

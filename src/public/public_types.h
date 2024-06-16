@@ -20,4 +20,8 @@ typedef long long INT64;
 
 typedef unsigned char BYTE;
 
+
+#define ThreadLocal __thread 
+
+
 #endif 

@@ -18,13 +18,14 @@
 #include "config_pub.h"
 
 #include "public.h"
+#include "public_types.h"
 #include "memPool.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-//#define hat_debug printf 
+// #define hat_debug printf 
 
 /* 
  * 内存上下文的列表，总的内存上下文由g_MemList记录，
@@ -36,7 +37,8 @@
  */
 static DList g_MemList = {0};
 static PDList g_headMemList = &g_MemList;
-static PMemContextNode g_CurrentContext = NULL;
+
+static ThreadLocal PMemContextNode g_CurrentContext = NULL;
 static PMemValidCheckData g_MemValidCheckData = NULL;
 
 static PMemContextNode NewMMContext(char *contextName);
@@ -70,7 +72,7 @@ void *AllocMemWithPool(unsigned int size, char *file, int line)
     pMem = (char *)AllocFromMemPool(total);
     if(NULL == pMem)
     {
-        hat_log("alloc mem %d from pool failure. \n", size);
+        hat_log("alloc mem %d from pool failure. ", size);
         exit(-1);
     }
 
@@ -92,7 +94,7 @@ void *AllocMemWithPool(unsigned int size, char *file, int line)
     /* memory strip is already reset by the context. */
     // memset(pMem, 0x00, size);
 
-    hat_debug("alloc mem %p, pos[%s:%d] \n", pMem, file, line);
+    hat_debug("alloc mem %p, pos[%s:%d] ", pMem, file, line);
     return (void *)pMem;
 }
 
@@ -100,7 +102,7 @@ int FreeMemWithPool(void *pMem, char *file, int line)
 {
     if(NULL == pMem)
         return -1;
-    hat_debug("relase mem %p, pos[%s:%d] \n", pMem, file, line);
+    hat_debug("relase mem %p, pos[%s:%d] ", pMem, file, line);
     return ReleaseToMemPool(pMem);
 }
 
@@ -119,7 +121,7 @@ void *AllocMemExt(unsigned int size, char *file, int line)
     pMem = (char *)malloc(size);
     if(NULL == pMem)
     {
-        hat_log("alloc mem %d failure. \n", size);
+        hat_log("alloc mem %d failure. ", size);
         exit(-1);
     }
 
@@ -142,7 +144,7 @@ void *AllocMemExt(unsigned int size, char *file, int line)
     size -= DEBUG_MEM_BARRIER_SIZE + DEBUG_MEM_BARRIER_SIZE;
     memcpy(pMem+size, start, DEBUG_MEM_BARRIER_SIZE);
 
-    hat_debug("User Memory Alloc[%p] size[%d] [%s][%d]\n", start, total, file, line);
+    hat_debug("User Memory Alloc[%p] size[%d] [%s][%d]", start, total, file, line);
 #endif
 
 #ifdef MEM_MANAGER
@@ -168,7 +170,7 @@ int FreeMemExt(void *pMem, char *file, int line)
 #ifndef  MEM_MANAGER
     pMem += DEBUG_MEM_TYPE_SIZE;
     size = *((unsigned int*)(pMem+DEBUG_MEM_TYPE_SIZE));
-    hat_debug("User Memory free[%p] size[%d] [%s][%d]\n", pMem, size, file, line);
+    hat_debug("User Memory free[%p] size[%d] [%s][%d]", pMem, size, file, line);
 
     /* while no memory manger */
     free(pMem);
@@ -259,6 +261,8 @@ PMemContextNode MemMangerSwitchContext(PMemContextNode oldContext)
 {
     PMemContextNode old = g_CurrentContext;
     g_CurrentContext = oldContext;
+
+    hat_debug("currentContext:%p.", g_CurrentContext);
 #ifdef MEM_MANAGER_SHOW    
     MemMangerShow();
 #endif     
@@ -268,6 +272,14 @@ PMemContextNode MemMangerSwitchContext(PMemContextNode oldContext)
 PMemContextNode MemMangerGetCurrentContext()
 {
     return g_CurrentContext;
+}
+
+void MemMangerSetCurrentContext(PMemContextNode context)
+{
+    if(NULL == context)
+        return;
+        
+    g_CurrentContext = context;
 }
 
 /*
@@ -281,11 +293,13 @@ PMemContextNode MemMangerNewContext(char *contextName)
     PMemContextNode MainContext = NewMMContext(contextName);
     PDList head = &(g_CurrentContext->subList);
 
+    hat_log("1currentContext:%p.", g_CurrentContext);
+
     /* MainContext->memList link to parent. */
     AddDListTail(&head, (PDList)MainContext);
 
     g_CurrentContext = MainContext;
-
+    hat_log("2currentContext:%p.", g_CurrentContext);
 #ifdef MEM_MANAGER_VALID_CHECK    
     MemValidCheck();
 #endif 
@@ -361,13 +375,13 @@ static void MemDestroyContextNode(PMemContextNode context)
             case T_MemNode:
             break;
             default:
-            hat_error("destroyContext %s addr:%p node type:%d node addr:%p \n", 
+            hat_error("destroyContext %s addr:%p node type:%d node addr:%p ", 
                         context->contextName, context, pCxt->type, pCxt);
             break;
         }
     }
 
-    hat_debug1("destroyContext %s addr:%p \n", context->contextName, context);
+    hat_debug1("destroyContext %s addr:%p ", context->contextName, context);
 
     ReleaseMemContext((PMemPoolContextInfo)context);
 }
@@ -468,14 +482,14 @@ static void MemValidCheckContextNode(PMemContextNode context)
         }
     }
 
-    hat_debug1("Memory context[%s] ,address %p\n", context->contextName, context);
+    hat_debug1("Memory context[%s] ,address %p", context->contextName, context);
 }
 
 static void MemValidCheckMemNode(PMemNode node)
 {
     char *ptr = NULL;
 
-    hat_debug1("Memory Node[%p] , value address[%p] size[%d]\n", node, node->ptr, node->memSize);
+    hat_debug1("Memory Node[%p] , value address[%p] size[%d]", node, node->ptr, node->memSize);
 
     // ptr = (char *)node;
     // MemValidCheckBlock((ptr), node->memSize);
@@ -516,7 +530,7 @@ static void MemValidCheckBlock(char *ptr, int size)
     }while(0);
 
     if(ret != 0)
-        hat_error("Momery check failure, maybe be damaged. retcode[%d] ptr[%p] size[%d]\n", ret, ptr, size);
+        hat_error("Momery check failure, maybe be damaged. retcode[%d] ptr[%p] size[%d]", ret, ptr, size);
 }
 
 
@@ -544,7 +558,7 @@ static int MemCheckFlag(char *ptr, int size)
         index = *((int*)(ptr));
         if(size != index)
         {
-            hat_log("size not equal record size %d, real size: %d\n", size, index);
+            hat_log("size not equal record size %d, real size: %d", size, index);
             ret = -5;
             break;
         }
@@ -581,7 +595,7 @@ static void MemMangerShow()
     headNode = g_headMemList;
     preNode = tailNode;
         
-    hat_debug1("MemManagerShow Start----------------------------\n");
+    hat_debug1("MemManagerShow Start----------------------------");
 
     while((preNode != NULL) && (preNode != headNode))
     {
@@ -596,12 +610,12 @@ static void MemMangerShow()
                 MemContextNodeShow(pCxt);
             break;
             default:
-            hat_debug1("MemManagerShow top has memnode. \n");
+            hat_debug1("MemManagerShow top has memnode. ");
             break;
         }
     }
 
-    hat_debug1("MemManagerShow End----------------------------\n");
+    hat_debug1("MemManagerShow End----------------------------");
 }
 
 static void MemContextNodeShow(PMemContextNode context)
@@ -622,7 +636,7 @@ static void MemContextNodeShow(PMemContextNode context)
     headNode = &(context->subList);
     preNode = tailNode;
         
-    hat_debug1("ContextNode Begin Name:%s Type:%d Addr:%p \n", context->contextName, context->type, context);
+    hat_debug1("ContextNode Begin Name:%s Type:%d Addr:%p ", context->contextName, context->type, context);
 
     while((preNode != NULL) && (preNode != headNode))
     {
@@ -639,17 +653,17 @@ static void MemContextNodeShow(PMemContextNode context)
             case T_MemNode:
                 memNode = (PMemNode)pCxt;
                 memCnt++;
-                hat_debug1("MemNode index:%d Type:%d memSize:%d  memAddr:%p \n",
+                hat_debug1("MemNode index:%d Type:%d memSize:%d  memAddr:%p ",
                         memCnt, memNode->type, memNode->memSize, memNode);
             break;
             default:
-                hat_debug1("unknown node index:%d Type:%d  memAddr:%p \n",
+                hat_debug1("unknown node index:%d Type:%d  memAddr:%p ",
                         memCnt, pCxt->type,  pCxt);
             break;
         }
     }
 
-    hat_debug1("ContextNode END Name:%s Type:%d Addr:%p  \n", 
+    hat_debug1("ContextNode END Name:%s Type:%d Addr:%p  ", 
             context->contextName, context->type, context);
 }
 

@@ -37,4 +37,5 @@
 #define hat_strncmp(str1, str2, len) strncmp(str1,str2,len)
 #define hat_strlen(str1) strlen(str1)
 
+#define hat_strncpy(str1, str2, len) strncpy(str1, str2, len)
 #endif 

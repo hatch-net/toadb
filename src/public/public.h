@@ -16,24 +16,26 @@
 #define HAT_PUBLIC_H_H
 
 #define TOADB_VERSION "V100C001B001SPC001"
-
+#include "logger.h"
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#define hat_debug1  
-#define hat_debug 
-#define hat_log printf 
-#define hat_error printf 
+
+
 
 /* maybe use offset, meanwhile older compiler.  */
-#define GetOffsetSize(member, type) (unsigned long)(((type *)(0))->member)
+#define GetOffsetSize(type, member) (unsigned long)(&(((type *)(0))->member))
 /* 通过成员的地址减去偏移量来获取结构体的地址  */
-#define GetAddrByMember(memberaddr, member, type) (type *)(((char*)(memberaddr)) - offsetof(type,member))
+//#define GetAddrByMember(memberaddr, member, type) (type *)(((char*)(memberaddr)) - offsetof(type,member))
 
+#define GetAddrByMember(memberaddr, member, type) (type *)(((char*)(memberaddr)) - GetOffsetSize(type,member))
 
 
 #define FLEXIBLE_SIZE 
 
+#define COMMENT_NAME_MAX_LEN (32)
+
+
+#define COMMAND_FINISH "finish"
+#define COMMAND_FiNISH_LEN 6
 
 #endif

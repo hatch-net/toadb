@@ -22,7 +22,7 @@ int lines = 0;
 int main(int argc, char *argv[])
 {
 	yylex();
-	printf("lines:%8d\nwords:%8d\nchars:%8d\n", lines, words, chars);
+	printf("lines:%8d\nwords:%8d\nchars:%8d", lines, words, chars);
 }
 
 int yywrap()

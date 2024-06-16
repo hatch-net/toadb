@@ -14,50 +14,84 @@
 #ifndef HAT_HASH_TABLE_H_H
 #define HAT_HASH_TABLE_H_H
 
-#include "list.h"
+#include "public.h"
 #include "memStack.h"
+#include "spinlock.h"
 
-typedef struct HashKey
+typedef unsigned long long HASHKEY; 
+#define HASH_BITS       (sizeof(HASHKEY)*8)
+
+typedef enum HashOp 
 {
-    unsigned long hashKey;
-}HashKey, *PHashKey;
+    HASH_FIND,
+    HASH_INSERT,
+    HASH_DELETE,
+    HASH_NULL
+}HashOp;
 
-typedef struct HashEntry 
+#define HASH_ELEMENT_SIZE (sizeof(HashElement))
+#define GetValue(element) ((char*)element + HASH_ELEMENT_SIZE)
+typedef struct HashElement
 {
-    DList link;
-    HashKey key;
-    char *value;
-}HashEntry, *PHashEntry;
+    struct HashElement *link;
+    HASHKEY hashKey;
+}HashElement, *PHashElement;
 
+
+#define HASH_SEGMENT_SIZE (32)
 typedef struct HashSegment
 {
-    PDList bucket;              /* every bucket is a double linke. */
+    SPINLOCK        segLock;
+    PHashElement    *segBuckets;
 }HashSegment, *PHashSegment;
 
-typedef struct HashTableContext 
+typedef HASHKEY (*HashKeyFun)(char *value, int valueSize);
+typedef int (*HashCompareFun)(char *value1, char *value2, int valueSize);
+typedef int (*ValueCopyFun)(PHashElement element, char *value, int valueSize);
+
+typedef struct HashTableInfo 
 {
-    PHashSegment segment;            /* partial of hash table */
-}HashTableContext, *PHashTableContext;
-
-
-typedef int (*hashCompare)(PHashEntry hashEntr1, PHashEntry hashEntry2, int keySize, int valueSize);
-typedef int (*hashCompute)(char *pValue, int size);
-
-typedef struct HashTableInfo
-{
-    PHashTableContext hashContext;
-    PHashEntry freeList;            /* free entry list. */
-    char *hashTblName;
-    int segmentSize;
-    int bucketMaxSize;
+    char name[COMMENT_NAME_MAX_LEN];
+    int initNum;
+    int maxNum;
+    int partitionNum;
     int valueSize;
-    int hashSize;
+    int keyValueSize;
 
-    /* operator functions */
-    hashCompare funCompare;
-    hashCompute getHashKey;
+    PHashElement    buckets;
+    PHashElement    freeHashElementList;    
+    SPINLOCK        freeListLock;
 
-    PMemContextNode memContext;
+    HASHKEY partitionMask;
+    HASHKEY bucketMask;
+    int partitionShift;
+    int bucketShift;
+    int hashSegmentSize;
+
+    PHashSegment        segmentArray;
+    PMemContextNode     hashMemContext;
+
+    HashKeyFun          getHashKey;
+    HashCompareFun      hashCompare;
+    ValueCopyFun        hashValueCopy;
 }HashTableInfo, *PHashTableInfo;
+
+
+PHashTableInfo HashTableCreate(int partNum, int maxSize, int initSize, int valueSize, int keyValueSize, PMemContextNode hashMemContext, char *Name);
+int DestroyHashTable(PHashTableInfo hashTableInfo);
+
+char * GetEntryValue(PHashElement element);
+int GetPartitionIndex(HASHKEY key, PHashTableInfo hashTableInfo);
+int GetBucketIndex(HASHKEY key, PHashTableInfo hashTableInfo);
+
+void HashLockPartition(PHashTableInfo hashTableInfo, int partition);
+void HashLockPartitionRelease(PHashTableInfo hashTableInfo, int partition);
+
+PHashElement DeleteHashEntryFromBucket(PHashTableInfo hashTableInfo, PHashElement *bucket, HASHKEY key, char *value);
+PHashElement GetHashEntryFromBucket(PHashTableInfo hashTableInfo, PHashElement bucket, HASHKEY key, char *value);
+
+PHashElement HashFindEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value, int partition);
+PHashElement HashGetFreeEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value);
+int HashDeleteEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value);
 
 #endif 

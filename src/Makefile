@@ -40,7 +40,7 @@ OBJS = ${patsubst %.c, %.o, $(SOURCE)}
 # .h files take place all directories.
 INC = ${foreach dir, $(DIRS), -I$(dir)}
 
-PARSER_DIR=${topdir}/parser
+PARSER_DIR=${topdir}/sqlcore/parser
 SCANNER = ${PARSER_DIR}/scanner.c
 PARSER = ${PARSER_DIR}/grammar.c
 PARSER_H = ${PARSER_DIR}/grammar.h
@@ -64,7 +64,7 @@ DEBUG_FLAGS = -g
 		
 CC = gcc
 #CFLAGS += -O2
-
+#CFLAGS += -Werror
 CFLAGS += ${INC}
 CFLAGS += ${DEFINES}
 CFLAGS += ${LDFLAGS}

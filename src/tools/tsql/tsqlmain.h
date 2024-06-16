@@ -24,11 +24,14 @@ typedef enum enRunMode
     TSQL_RUN_SINGLE_INPUT,
     TSQL_RUN_ONLY_CLIENT,
     TSQL_RUN_ONLY_SERVER,
+    TSQL_RUN_CS_MODE,
     TSQL_RUN_INVALID
 }enRunMode;
 
 
 
 int OnlyClientRun(char *command);
+
+int ReadClientCommand(char *command);
 
 #endif

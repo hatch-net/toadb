@@ -20,5 +20,7 @@
 
 /* dictionary memcontext , release when server exited. */
 extern PMemContextNode dictionaryContext ;
+extern PMemContextNode topMemContext ;
+
 
 #endif 

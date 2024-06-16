@@ -16,6 +16,8 @@
 
 #include "memStack.h"
 #include "public.h"
+#include "spinlock.h"
+
 
 #define MEMORY_POOL_MANAGER_VERSION (0x0B10)
 #define MEMORY_POOL_PAGE_SIZE (4096)
@@ -34,11 +36,16 @@
 
 typedef struct MemPoolManagerContext
 {
-    DList memFreeList;
-    int version;
-    unsigned long totalSize;    /* 已经使用的动态内存大小 */
+
+    DList           memFreeList;
+    int             version;
+    unsigned long   totalSize;    /* 已经使用的动态内存大小 */
+    SPINLOCK        lock;         /* protected this structure. */
 }MemPoolManagerContext, *PMemPoolManagerContext;
 
+/* 
+ * MemAlloc will alloc a MemBlock, and return MemBlock->ptr for user.
+ */
 #define GetMemBlockHeader(memptr) (GetAddrByMember(memptr, ptr, MemBlock))
 typedef struct MemBlock 
 {

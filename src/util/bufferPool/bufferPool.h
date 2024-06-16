@@ -15,10 +15,13 @@
 #define HAT_BUFFER_POOL_H_H
 
 #include "tablecom.h"
+#include "rwlock.h"
 
 typedef int BUFFERID;
 #define INVLID_BUFFER (-1)
 #define BUFFER_MIN_NUM (8)
+
+#pragma pack(push, 1)
 
 typedef struct BufferTag
 {
@@ -29,11 +32,26 @@ typedef struct BufferTag
     ForkType forkNum;
 }BufferTag, *PBufferTag;
 
+typedef struct BufferPoolHashValue
+{
+    BufferTag tag;
+    BUFFERID bufferId;
+}BufferPoolHashValue, *PBufferPoolHashValue;
+
+#pragma pack(pop)
 
 typedef struct BufferElement
 {
     char buffer[PAGE_MAX_SIZE];
 }BufferElement, *PBufferElement;
+
+typedef enum BufferLockMode
+{
+    BUF_NULL,
+    BUF_READ,
+    BUF_WRITE,
+    BUF_UNKNOWN
+}BufferLockMode;
 
 typedef enum BufferValidFlag
 {
@@ -55,6 +73,7 @@ typedef struct BufferDesc
     unsigned int refCnt;
     int usedCnt;
     int isInFreeList;
+    RWLockInfo lock;
 }BufferDesc, *PBufferDesc;
 
 #define CompareBufferTag(tag1, tag2) (((tag1)->databaseId == (tag2)->databaseId) \
@@ -79,8 +98,17 @@ typedef struct BufferPoolContext
 #define GetBufferID(buffPool, buffer) ((buffer) - (bufferPool)->bufferPool)
 
 int InitBufferPool(PBufferPoolContext bufferPool, int pageNum);
+int ReleaseBufferPool(PBufferPoolContext bufferPool, int pageNum);
 
-PBufferElement AllocBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag, int *found);
+int LockBuffer(PBufferDesc bufferDesc, BufferLockMode mode);
+int UnlockBuffer(PBufferDesc bufferDesc, BufferLockMode mode);
+
+int PinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId);
+int unPinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId);
+
+BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool);
+BUFFERID ClockSweep(PBufferPoolContext bufferPool);
+
 int InvalidateBuffer(PBufferPoolContext bufferPool, PBufferDesc bufferDesc);
 int ReleaseBufferDesc(PBufferPoolContext bufferPool, PBufferDesc bufferDesc);
 int ReleaseBuffer(PBufferPoolContext bufferPool, PBufferElement bufferElemnet);

@@ -19,13 +19,18 @@
 
 #include "tsqlmain.h"
 #include "toadmain.h"
+#include "tsqlclient.h"
 
 #include "ipc.h"
 
 #define TOADB_VERSION "V100C001B001SPC001"
 
 extern char *DataDir; 
+char *serverAddr = "127.0.0.1";
+int serverPort = 6389;
+
 static PClientSharedInfo clientSharedInfo = NULL;
+static enRunMode runMode = TSQL_RUN_CS_MODE;
 
 static void showHelp();
 
@@ -36,7 +41,7 @@ static void RunClientOnce(char *command);
 
 static void ShowResult();
 static int SendCommand(char *command);
-static int ReadClientCommand(char *command);
+
 
 int main(int argc, char *argv[])
 {
@@ -44,12 +49,12 @@ int main(int argc, char *argv[])
 	int	c;
     int digit_optind = 0;
     char *command = NULL;
-    enRunMode runMode = TSQL_RUN_COMMAND;
 
     static struct option long_options[] =
     {
         {"help",    no_argument,    NULL, 'h'},
         {"version", no_argument,    NULL, 'v'},
+        {"single", no_argument,    NULL, 'i'},
         {"client", no_argument,    NULL, 'd'},
         {"server-deamon", no_argument,    NULL, 's'},
         {NULL,      0,              NULL, 0  },
@@ -60,7 +65,7 @@ int main(int argc, char *argv[])
 
     atexit(exitClientProc);
 
-    while((c =getopt_long(argc, argv, "D:C:-", 
+    while((c =getopt_long(argc, argv, "D:C:H:P:-", 
                             long_options, &optindex))!= -1)
     {  
         switch(c)
@@ -73,13 +78,22 @@ int main(int argc, char *argv[])
                 if(runMode == TSQL_RUN_COMMAND)
                     runMode = TSQL_RUN_ONLY_CLIENT;
             break;
+            case 'H':
+                serverAddr = strdup(optarg);
+            break;
+            case 'P':
+                serverPort = atoi(optarg);
+            break;
             case 'v':
-                printf("toadb version:%s\n", TOADB_VERSION);
+                printf("toadb version:%s", TOADB_VERSION);
                 exit(0);
             break;
             case 'h':
                 showHelp();
                 exit(0);
+            break;
+            case 'i':
+                runMode = TSQL_RUN_COMMAND;
             break;
             case 'd':
                 runMode = TSQL_RUN_ONLY_CLIENT;
@@ -88,7 +102,7 @@ int main(int argc, char *argv[])
                 runMode = TSQL_RUN_ONLY_SERVER;
             break;
             default:
-                printf("unknow argument %c\n", c);
+                printf("unknow argument %c", c);
             return -1;
         }
     }
@@ -109,6 +123,9 @@ int main(int argc, char *argv[])
     case TSQL_RUN_ONLY_SERVER:
         RunToadbServerDemon();
     break;
+    case TSQL_RUN_CS_MODE:
+        CSClient_main(argc, argv);
+    break;
     default:
     break;
     }
@@ -119,9 +136,14 @@ int main(int argc, char *argv[])
 static void showHelp()
 {
     printf("Welcome to toadb client - toadsql. \n");
-    printf("toadsql argments list: \n");
+    printf("toadsql argments list: ");
     printf("-D datapath , enter toadb command client. \n");
     printf("-C \"sqlstring\" , execute sql once only. \n");
+    printf("\nRunning Mode Select: \n");
+    printf("--i , Single client Mode, Server/Client is the same process. \n");
+    printf("--d , Single sql Mode, Server/Client is the same process. \n");
+    printf("--s , Server running with deamon mode, only server start. \n");
+    printf("default, Server running deamon mode, client/server communicate with network. \n");
     printf("--v , show version. \n");
     printf("--h , show help. \n");
 }
@@ -165,7 +187,7 @@ static void ShowResult()
     {
         WaitServerDataArrive();
 
-        printf("%s\n",clientSharedInfo->data);
+        printf("%s",clientSharedInfo->data);
 
         if(SERVER_EXCUTOR_RESULT_FINISH != clientSharedInfo->command)
             NotifyServerReadData();
@@ -183,16 +205,18 @@ static int SendCommand(char *command)
     return 0;
 }
 
-static int ReadClientCommand(char *command)
+int ReadClientCommand(char *command)
 {
-    if(ReadCommandLine(command) <= 0)
+    int readlen = 0;
+    readlen = ReadCommandLine(command);
+    if(readlen <= 0)
         return -1;
 
     if(strcmp(command, "quit") == 0)
     {
         return -1;
     }
-    return 0;
+    return readlen;
 }
 
 int OnlyClientRun(char *command)
@@ -218,5 +242,21 @@ int OnlyClientRun(char *command)
  */
 void exitClientProc()
 {
-    DestoryClientSharedEnv((char**)&clientSharedInfo);
+    switch(runMode)
+    {
+    case TSQL_RUN_COMMAND:
+        DestoryClientSharedEnv((char**)&clientSharedInfo);
+    break;
+    case TSQL_RUN_SINGLE_INPUT:
+    break;
+    case TSQL_RUN_ONLY_CLIENT:
+        DestoryClientSharedEnv((char**)&clientSharedInfo);
+    break;
+    case TSQL_RUN_ONLY_SERVER:
+    break;
+    case TSQL_RUN_CS_MODE:
+    break;
+    default:
+    break;
+    }
 }

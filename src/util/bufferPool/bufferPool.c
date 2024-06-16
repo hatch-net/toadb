@@ -14,17 +14,14 @@
 
 #include "bufferPool.h"
 #include "public.h"
+
+
 #include <string.h>
 
-
+// #define hat_debug_buffPool(...) log_report(LOG_INFO, __VA_ARGS__) 
+#define hat_debug_buffPool(...) 
 
 static int InsertFreeList(PBufferPoolContext bufferPool, BUFFERID id);
-static BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool);
-
-static BUFFERID SearchBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag);
-static BUFFERID ClockSweep(PBufferPoolContext bufferPool);
-
-
 
 int InitBufferPool(PBufferPoolContext bufferPool, int pageNum)
 {
@@ -35,7 +32,7 @@ int InitBufferPool(PBufferPoolContext bufferPool, int pageNum)
     
     if(pageNum < BUFFER_MIN_NUM)
     {
-        hat_error("buffer pool size is invalid.\n");
+        hat_error("buffer pool size is invalid.");
         return -1;
     }
 
@@ -52,74 +49,30 @@ int InitBufferPool(PBufferPoolContext bufferPool, int pageNum)
         bufferPool->freeList[index] = index + 1;
         bufferPool->bufferDesc[index].isValid = BVF_INVALID;
         bufferPool->bufferDesc[index].isDirty = BUFFER_CLEAN;
+
+        InitRWLock(&bufferPool->bufferDesc[index].lock);
     }
     bufferPool->freeList[pageNum-1] = Free_List_End; 
 
     return 0;
 }
 
-/*
- * found :
- *      1, buffer tag is found in buffer pool;
- *      2, free buffer is returned, and tag was assigned;
- *      3, the buffer which is returned is dirty buffer, which will be flushed at the first,
- *          then assigned tag.
- *      all of above, refcnt is added, releasebuffer to minus.
- */
-PBufferElement AllocBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag, int *found)
-{
-    BUFFERID bufferId = 0;
-    PBufferElement pElemnt = NULL;
+int ReleaseBufferPool(PBufferPoolContext bufferPool, int pageNum)
+{    
+    int index = 0;
 
-    /* search buffer pool */
-    bufferId = SearchBuffer(bufferPool, bufferTag);
-    if(INVLID_BUFFER != bufferId)
+    if(NULL == bufferPool)
+        return -1;
+
+    for(index = 0; index < pageNum; index ++)
     {
-        bufferPool->bufferDesc[bufferId].usedCnt = 
-            (bufferPool->bufferDesc[bufferId].usedCnt+1) > USE_COUNT_MAX? USE_COUNT_MAX:(bufferPool->bufferDesc[bufferId].usedCnt+1);
-        bufferPool->bufferDesc[bufferId].refCnt += 1;
-
-        *found = BUFFER_FOUND;
-        goto RET_BUF;
+        DestroyRWLock(&bufferPool->bufferDesc[index].lock);
     }
 
-    /* find free list */
-    bufferId = GetFreeBufferId(bufferPool);
-    if(INVLID_BUFFER != bufferId)
-    {
-        bufferPool->bufferDesc[bufferId].usedCnt = USE_COUNT_MAX;
-        bufferPool->bufferDesc[bufferId].refCnt = 1;
-
-        *found = BUFFER_EMPTY;
-        goto INIT_TAG;
-    }
-
-    /* find a victim */
-    bufferId = ClockSweep(bufferPool);    
-    /* swap one buffer */
-    if(INVLID_BUFFER != bufferId)
-    {
-        bufferPool->bufferDesc[bufferId].usedCnt = USE_COUNT_MAX;
-        bufferPool->bufferDesc[bufferId].refCnt = 1;
-
-        if(BUFFER_DITRY == bufferPool->bufferDesc[bufferId].isDirty)
-        {
-            *found = BUFFER_OTHER;
-            goto RET_BUF;
-        }
-
-        *found = BUFFER_EMPTY;
-    }
-
-INIT_TAG:
-    memcpy(&(bufferPool->bufferDesc[bufferId].bufferTag), bufferTag, sizeof(BufferTag));
-    bufferPool->bufferDesc[bufferId].isValid = BVF_TAG;
-    bufferPool->bufferDesc[bufferId].isDirty = BUFFER_CLEAN;
-
-RET_BUF:
-    pElemnt = &(bufferPool->bufferPool[bufferId]);
-    return pElemnt;
+    return 0;
 }
+
+
 
 int InvalidateBuffer(PBufferPoolContext bufferPool, PBufferDesc bufferDesc)
 {
@@ -141,16 +94,16 @@ int ReleaseBufferDesc(PBufferPoolContext bufferPool, PBufferDesc bufferDesc)
         bufferDesc->refCnt -= 1;
     }
 
-    hat_debug("release buffer id=%d refCnt=%d, buftag[%d,%d,%d]\n", 
+    hat_debug_buffPool("release buffer id=%d refCnt=%d, buftag[%d,%d,%d]", 
                                         bufferId, bufferDesc->refCnt, 
                                         bufferDesc->bufferTag.tableId,
                                         bufferDesc->bufferTag.pageno,
                                         bufferDesc->bufferTag.forkNum);
-                                        
-    if(bufferDesc->refCnt == 0)
-    {
-        InsertFreeList(bufferPool, bufferId);
-    }
+ // let clocksweep to do.                                      
+ //   if(bufferDesc->refCnt == 0)
+ //   {
+ //       InsertFreeList(bufferPool, bufferId);
+ //   }
     
     return 1;
 }
@@ -196,6 +149,28 @@ int SetBuffferValid(PBufferPoolContext bufferPool, PBufferElement bufferElemnet,
     return 0;
 }
 
+
+int PinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId)
+{
+    /* It set to max value, which is avoid when new block replace repeatly. */
+    bufferPool->bufferDesc[bufferId].usedCnt = USE_COUNT_MAX;
+    //    (bufferPool->bufferDesc[bufferId].usedCnt+1) > USE_COUNT_MAX? USE_COUNT_MAX:(bufferPool->bufferDesc[bufferId].usedCnt+1);
+    
+    bufferPool->bufferDesc[bufferId].refCnt += 1;
+
+    return 0;
+}
+
+int unPinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId)
+{
+    if(bufferPool->bufferDesc[bufferId].refCnt > 0)
+    {
+        bufferPool->bufferDesc[bufferId].refCnt -= 1;
+    }
+
+    return 0;
+}
+
 static int InsertFreeList(PBufferPoolContext bufferPool, BUFFERID id)
 {
     /* id = 0, not save to this list. */
@@ -209,7 +184,7 @@ static int InsertFreeList(PBufferPoolContext bufferPool, BUFFERID id)
     return 0;
 }
 
-static BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool)
+BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool)
 {
     BUFFERID id = bufferPool->freeList[0];
 
@@ -223,72 +198,57 @@ static BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool)
             break;
     }
 
-    if(bufferPool->bufferDesc[id].refCnt != 0)
+    if(id != Free_List_End)
     {
-        hat_error("get free buffer %d reference count %d error\n", id, bufferPool->bufferDesc[id].refCnt);
+        hat_debug_buffPool("free buffer id=%d refCnt=%d bufferNum=%d", id, bufferPool->bufferDesc[id].refCnt, bufferPool->bufferNum);
     }
-
-    hat_debug("free buffer id=%d refCnt=%d bufferNum=%d\n", id, bufferPool->bufferDesc[id].refCnt, bufferPool->bufferNum);
 
     return id;
 }
 
-static BUFFERID SearchBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag)
-{
-    BUFFERID id = 0;
 
-    for( ; id < bufferPool->bufferNum; id ++)
-    {
-        if(BVF_VLID != bufferPool->bufferDesc[id].isValid)
-            continue;
-
-        hat_debug1("buffer hit id=%d buftag[%d,%d,%d,%d,%d] requestTag[%d,%d,%d,%d,%d]\n", 
-                                        id,  
-                                        bufferPool->bufferDesc[id].bufferTag.databaseId,
-                                        bufferPool->bufferDesc[id].bufferTag.tableId,
-                                        bufferPool->bufferDesc[id].bufferTag.segno,
-                                        bufferPool->bufferDesc[id].bufferTag.pageno,
-                                        bufferPool->bufferDesc[id].bufferTag.forkNum,
-                                        bufferTag->databaseId,
-                                        bufferTag->tableId,
-                                        bufferTag->segno,
-                                        bufferTag->pageno,
-                                        bufferTag->forkNum);
-
-        if(CompareBufferTag(&(bufferPool->bufferDesc[id].bufferTag), bufferTag))
-            break;
-    }
-
-    if(id >= bufferPool->bufferNum)
-        return INVLID_BUFFER;
-
-    hat_debug("buffer hit id=%d refCnt=%d, buftag[%d,%d,%d]\n", 
-                                        id, bufferPool->bufferDesc[id].refCnt, 
-                                        bufferPool->bufferDesc[id].bufferTag.tableId,
-                                        bufferPool->bufferDesc[id].bufferTag.pageno,
-                                        bufferPool->bufferDesc[id].bufferTag.forkNum);
-    return id;
-}
 
 static BUFFERID start = 0;
-static BUFFERID ClockSweep(PBufferPoolContext bufferPool)
+BUFFERID ClockSweep(PBufferPoolContext bufferPool)
 {
     BUFFERID id = start;
 
     for( ; ; id = (id+1) % bufferPool->bufferNum)
     {
+        hat_debug_buffPool("clocksweep id=%d usedCnt=%d isValid=%d refCnt=%d", 
+                    id, 
+                    bufferPool->bufferDesc[id].usedCnt, 
+                    bufferPool->bufferDesc[id].isValid,
+                    bufferPool->bufferDesc[id].refCnt);
+
         if(BVF_INVALID == bufferPool->bufferDesc[id].isValid)
             break;
 
-        bufferPool->bufferDesc[id].usedCnt = (bufferPool->bufferDesc[id].usedCnt - 1) >= 0? (bufferPool->bufferDesc[id].usedCnt - 1):0;
+        bufferPool->bufferDesc[id].usedCnt = (bufferPool->bufferDesc[id].usedCnt) > 0? (bufferPool->bufferDesc[id].usedCnt - 1):0;
 
+        /* after usedCnt minus one, current circle is find one. */
         if((0 == bufferPool->bufferDesc[id].refCnt) && (0 == bufferPool->bufferDesc[id].usedCnt))
             break;
     }
 
-    hat_debug("clocksweep id=%d start=%d \n", id, start);
+    hat_debug_buffPool("clocksweep id=%d start=%d ", id, start);
 
-    start = id + 1;
+    start = (id + 1) % bufferPool->bufferNum;
     return id;
 }
 
+int LockBuffer(PBufferDesc bufferDesc, BufferLockMode mode)
+{
+    if(NULL == bufferDesc)
+        return -1;
+
+    return AcquireRWLock(&bufferDesc->lock, mode);
+}
+
+int UnlockBuffer(PBufferDesc bufferDesc, BufferLockMode mode)
+{
+    if(NULL == bufferDesc)
+        return -1;
+
+    return ReleaseRWLock(&bufferDesc->lock, mode);
+}

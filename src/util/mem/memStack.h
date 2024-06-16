@@ -64,6 +64,9 @@ typedef struct MemValidCheckData
 /* 
  * 当释放时，增加此值，当与pagesize相等时，释放此page到 freelist. 
  * 这只针对标准page，非标page不计数，它只有used 和 unused,释放时直接释放。 
+ * 
+ *  malloc a memory strip,  | MemPageInfo | MemBlock1 | Memblock2| ... |
+ *  user use MemBlock->ptr, and Memblock->mem pointer to Header of MemPageInfo. 
 */
 #define MEMPAGE_INFO_LEN (sizeof(MemPageInfo))
 typedef struct MemPageInfo
@@ -107,6 +110,7 @@ PMemContextNode MemMangerSwitchContext(PMemContextNode oldContext);
 PMemContextNode MemMangerNewContext(char *contextName);
 void MemMangerDeleteContext(PMemContextNode preContext, PMemContextNode delContext);
 PMemContextNode MemMangerGetCurrentContext();
+void MemMangerSetCurrentContext(PMemContextNode context);
 
 PNode MM_CreateNode(int size, NodeType type);
 

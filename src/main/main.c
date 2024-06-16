@@ -17,6 +17,10 @@
 #include <string.h>
 #include "toadmain.h"
 
+/* test */
+//#include "logger.h"
+//#define TEST_PRO 1
+int test_pro(int argc, char *argv[]);
 
 /* 
  * toadb programmer main entrypoint. 
@@ -24,7 +28,20 @@
  */
 int main(int argc, char *argv[])
 {
+#ifdef TEST_PRO
+	test_pro(argc, argv);
+#endif 
+
 	printf("Welcome to Toad Database Manage System.\n")	;
 	toadbMain(argc, argv);
+	return 0;
+}
+
+
+int test_pro(int argc, char *argv[])
+{
+	SyslogInit();
+
+	printf("abc test\n");
 	return 0;
 }
