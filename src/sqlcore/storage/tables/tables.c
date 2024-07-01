@@ -8,6 +8,7 @@
 #include "tfile.h"
 #include "public.h"
 #include "memStack.h"
+#include "toadmain.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,7 +46,7 @@ int TableOpen(PTableList tblInfo, char *tableName, ForkType forkNum)
     ret = TableInfoInit(tblInfo);
     if(ret < 0)
     {
-        hat_log("[%s][%d]table %s information initialize failure.", __FUNCTION__,__LINE__,tableName);
+        hat_error("[%s][%d]table %s information initialize failure.", __FUNCTION__,__LINE__,tableName);
         return -1;
     }
 
@@ -82,16 +83,13 @@ static int TableInfoInit(PTableList tblInfo)
     tblInfo->rel->relType = tblInfo->tableDef->tableType;
     tblInfo->sgmr->storageType = tblInfo->tableDef->tableType;
     
-    /* update global varial */
-    SetObjectId(tblInfo->rel->relid);
-
     /* group file */
     tblInfo->groupInfo = (PGroupPageHeader)AllocMem(PAGE_MAX_SIZE);
 
     ret = TableRead(tblInfo, &pageoffset, GROUP_FORK, (char *)tblInfo->groupInfo);
     if (ret < 0)
     {
-        hat_log("[%s][%d]read table %s-%d first page failure.", __FUNCTION__,__LINE__,tblInfo->tableDef->tableName, GROUP_FORK);
+        hat_error("[%s][%d]read table %s-%d first page failure.", __FUNCTION__,__LINE__,tblInfo->tableDef->tableName, GROUP_FORK);
         return -1;
     }
 
@@ -118,6 +116,8 @@ int TableCreate(PTableList tblInfo, ForkType forkNum)
     vfInfo = smgr_create(tblInfo->sgmr, tblInfo->tableDef->tableName, forkNum);
     if(NULL == vfInfo)
     {
+        smgrRelease(tblInfo->sgmr);
+        tblInfo->sgmr = NULL;
         return -1;
     }
 
@@ -172,7 +172,7 @@ static int TableFileGroupInit(PTableList tblInfo)
     vf = smgr_open(tblInfo->sgmr, tblInfo->tableDef->tableName, MAIN_FORK);
     if (NULL == vf)
     {
-        hat_log("open table %s failure.", tblInfo->tableDef->tableName);
+        hat_error("open table %s failure.", tblInfo->tableDef->tableName);
         return -1;
     }
 
@@ -183,7 +183,7 @@ static int TableFileGroupInit(PTableList tblInfo)
     ret = TableRead(tblInfo, &pageoffset, MAIN_FORK, (char *)gpage);
     if (ret < 0)
     {
-        hat_log("read table %s-%d first page failure.", tblInfo->tableDef->tableName, MAIN_FORK);
+        hat_error("read table %s-%d first page failure.", tblInfo->tableDef->tableName, MAIN_FORK);
         return -1;
     }
 
@@ -238,7 +238,7 @@ int TableRead(PTableList tblInfo, PPageOffset pageoffset, ForkType forkNum, char
         vpos = smgr_open(tblInfo->sgmr, tblInfo->tableDef->tableName, forkNum);
         if(NULL == vpos)
         {
-            hat_log("open table %s-%d failure.", tblInfo->tableDef->tableName, forkNum);
+            hat_error("open table %s-%d failure.", tblInfo->tableDef->tableName, forkNum);
             return -1;
         }
     }
@@ -263,7 +263,7 @@ int TableWrite(PTableList tblInfo, PPageHeader page, ForkType forkNum)
         vpos = smgr_open(tblInfo->sgmr, tblInfo->tableDef->tableName, forkNum);
         if(NULL == vpos)
         {
-            hat_log("open table %s-%d failure.", tblInfo->tableDef->tableName, forkNum);
+            hat_error("open table %s-%d failure.", tblInfo->tableDef->tableName, forkNum);
             return -1;
         }
     }
@@ -281,7 +281,7 @@ int TableDrop(PTableList tblInfo)
 
     if(NULL == tblInfo)
     {
-        hat_log("exec drop table failure. unknow table name.");
+        hat_error("exec drop table failure. unknow table name.");
         return -1;
     }
 
@@ -291,7 +291,7 @@ int TableDrop(PTableList tblInfo)
     ret = DeleteTableFile(tblInfo->tableDef->tableName);
     if(0 != ret)
     {
-        hat_log("exec drop %s table failure.", tblInfo->tableDef->tableName);
+        hat_error("exec drop %s table failure.", tblInfo->tableDef->tableName);
         return -1;
     }
 
@@ -301,17 +301,9 @@ int TableDrop(PTableList tblInfo)
     return ret;
 }
 
-static int objId = 1;
-void SetObjectId(int id)
-{
-    if(id >= objId)
-        objId = id + 1;
-    return ;
-}
-
 int GetObjectId()
 {
-    return objId++;
+    return GetAndIncObjectId();
 }
 
 
@@ -403,6 +395,11 @@ PRowColumnData ReadRowData(PPageDataHeader page,  int offset)
      */
     colData = (PRowColumnData)pageBuf;
     colSize = colData->size;
+    if(colSize > MAX_ROW_DATA_SIZE)
+    {
+        hat_error("column size error [%d], page[%d-%d].", colSize, page->header.pageNum, offset);
+        return NULL;
+    }
 
     colData = (PRowColumnData)AllocMem(colSize);
     

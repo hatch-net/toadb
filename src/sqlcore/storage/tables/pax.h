@@ -21,7 +21,7 @@ typedef struct GroupChain
 
 typedef struct GroupPageInfo
 {
-    int group_id;
+    unsigned int group_id;
     int columnNum;                /* It specified column index which data will storaged in this page. */
 }GroupPageInfo;
 

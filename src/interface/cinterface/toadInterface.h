@@ -1,5 +1,5 @@
 /*
- *	toadb client  
+ *	toadb c language interface
  * Copyright (c) 2023-2024 senllang
  * 
  * toadb is licensed under Mulan PSL v2.
@@ -11,19 +11,26 @@
  * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
  * See the Mulan PSL v2 for more details.
 */
+#ifndef HAT_CINTERFACE_H_H
+#define HAT_CINTERFACE_H_H
 
-
-#ifndef HAT_CLIENT_H_H
-#define HAT_CLIENT_H_H
-
-#include "portal.h"
+#include "netclient.h"
+#include "tcpsock.h"
 
 #define MAX_EVENT_SIZE 2
 
+typedef struct ConnectionContext 
+{
+    TCPContext tcpCxt;
+    ClientContext clientCxt;
+}ConnectionContext, *PConnectionContext;
 
+int InitToadbInterface(PConnectionContext conn);
+int DestoryToadbInterface(PConnectionContext conn);
 
-int CSClient_main(int argc, char *argv[]);
+int ConnectToadbServer(PConnectionContext conn, char *Addr, int port);
+int CloseConnectionToadb(PConnectionContext conn);
 
-int CSClient_Once(PMsgHeader msg);
+int ExecQery(PConnectionContext conn, char *sql);
 
 #endif 

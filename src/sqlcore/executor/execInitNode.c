@@ -18,8 +18,6 @@
 #include "execSelect.h"
 #include "memStack.h"
 
-#define hat_log printf 
-#define debug 
 
 typedef PNode (*InitExecFun)(PExecState eState);
 
@@ -36,7 +34,7 @@ static PNode InitExecNodePlan(PExecState eState)
     plan = (PPlan)eState->subPlanNode;
     if(NULL == plan)
     {
-        hat_log("[InitExecNodePlan] subPlanNode is NULL");
+        hat_error("[InitExecNodePlan] subPlanNode is NULL");
         return NULL;
     }
 
@@ -50,14 +48,14 @@ static PNode InitExecNodePlan(PExecState eState)
     /* process left and right node */
     if(NULL != plan->leftplan)
     {
-        debug("[InitExecNodePlan] leftplan ");
+        hat_debug("[InitExecNodePlan] leftplan ");
         eState->subPlanNode = (PNode)plan->leftplan;
         planState->left = InitExecNode(eState);       
     }
 
     if(NULL != plan->rightplan)
     {
-        debug("[InitExecNodePlan] rightplan ");
+        hat_debug("[InitExecNodePlan] rightplan ");
         eState->subPlanNode = (PNode)plan->rightplan;
         planState->right = InitExecNode(eState);
     }
@@ -278,6 +276,7 @@ static PNode InitExecNodeQuerybl(PExecState eState)
     PQueryTblState planState = NULL;
     PPlanStateNode psn = NULL;
     PQueryTbl plan = NULL;
+    int ret = 0;
 
     if(NULL == eState)
         return NULL;
@@ -293,7 +292,12 @@ static PNode InitExecNodeQuerybl(PExecState eState)
     psn->execProcNode = ExecTableQueryNode;
 
     /* generator partal client title. */
-    InitSelectPortal(plan->targetList, psn->portal);
+    ret = InitSelectPortal(plan->targetList, psn->portal);
+    if(ret < 0)
+    {
+        hat_error("init select portal failure.");
+        return NULL;
+    }
 
     /* process subplan node */
     if(NULL != plan->subplan)
@@ -382,7 +386,7 @@ PNode InitExecNode(PExecState eState)
 
     plan = eState->subPlanNode;
     
-    debug("[InitExecNode] node type %d", plan->type);
+    hat_debug("[InitExecNode] node type %d", plan->type);
     switch(plan->type)
     {
         case T_Plan:

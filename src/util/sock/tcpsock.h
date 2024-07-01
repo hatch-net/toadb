@@ -20,14 +20,24 @@
 #define IPV4_ADDRESS_LEN 16
 #define SOCKET_BUFFER_LEN 2048 
 
+typedef enum TCPState
+{
+    TS_NONE         = 0x00,
+    TS_BLOCK_READ   = 0x01,
+    TS_BLOCK_WRITE  = 0x02,
+    TS_MAX
+}TCPState;
+
 typedef struct EventProcInfo
 {
-    int message;
+    int message;                /* state bit -> TCPState */
     int len; 
     char *buffer;
+    void *otherData;
 }EventProcInfo, *PEventProcInfo;
 
-typedef int (*EventProc)(PEventProcInfo info);
+typedef int (*MessageProc)(char *message, int len);
+typedef int (*EventProc)(PEventProcInfo info, MessageProc msgProc);
 
 typedef struct TCPContext
 {
@@ -35,11 +45,11 @@ typedef struct TCPContext
 
     int epoll_fd;
     int maxEvent;
-    
+       
     PEventProcInfo info;
     EventProc readProc;
     EventProc writeProc;
-
+    MessageProc msgProc;
 }TCPContext, *PTCPContext;
 
 int CreateTcpSocket();

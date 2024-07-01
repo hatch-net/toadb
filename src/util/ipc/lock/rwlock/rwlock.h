@@ -29,13 +29,21 @@ typedef struct RWLockInfo
 {
     pthread_rwlock_t rwlock; 
     RWLockMode lockMode;
+    int rlockCnt;
 }RWLockInfo, *PRWLockInfo;
+
 
 int InitRWLock(PRWLockInfo lock);
 
 int AcquireRWLock(PRWLockInfo lock, RWLockMode mode) ;
-
 int ReleaseRWLock(PRWLockInfo lock, RWLockMode mode);
+
+
+#define AcquireLock(lock, mode) AcquireRWLockEx(lock, mode, __FUNCTION__, __LINE__)
+#define ReleaseLock(lock, mode) ReleaseRWLockEx(lock, mode, __FUNCTION__, __LINE__)
+
+int AcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, char *fun, int line);
+int ReleaseRWLockEx(PRWLockInfo lock, RWLockMode mode, char *fun, int line);
 
 int DestroyRWLock(PRWLockInfo lock);
 

@@ -19,7 +19,7 @@
 #include <pwd.h>
 #include <getopt.h>      
 #include <signal.h>
-
+#include <errno.h>
 #include <sys/types.h>
 #include <fcntl.h> 
 
@@ -36,14 +36,17 @@
 #include "logger.h"
 #include "servprocess.h"
 #include "workermain.h"
+#include "atom.h"
 
-#define hat_log printf
 
 // #define PARSER_TREE_PRINT 1
 
+char *globalData = "globalData";
 char *DataDir = "./toadbtest";
 int runMode = TOADSERV_RUN_CLIENT_SERVER;
 int pageNum = 64;
+
+static SysGlobalContext sysGlobalData;
 
 PMemContextNode topMemContext = NULL;
 PMemContextNode dictionaryContext = NULL;
@@ -148,7 +151,7 @@ static int RunToadbCSModeServerDemon()
         return 0;
     }
 
-    //pid = fork();
+   // pid = fork();
     if(pid == 0)
     {
         /* child process */
@@ -431,7 +434,9 @@ int InitToad()
 
     /* initialize dictionary info */
     InitTblInfo();
-    return 0;
+
+    ret = InitSysGlobal();
+    return ret;
 }
 
 int ExitToad()
@@ -444,6 +449,8 @@ int ExitToad()
 
     MemMangerDestroy();
 
+    DestroySysGlobal();
+
     SyslogDestroy();
     return 0;
 }
@@ -453,7 +460,7 @@ int checkDataDir()
     // 检查文件是否存在
     if (access(DataDir, F_OK) != 0) 
     {
-        // hat_log("table file %s is not exist. ", filepath);
+        hat_log("table file %s is not exist. ", DataDir);
         return -1;
     }
 
@@ -517,4 +524,80 @@ void ShowToadbInfo()
 
     /* Datadir */
     printf("datadir: [%s]\n",DataDir);
+}
+
+int WriteSysGlobalData(PSysGlobalContext sysContext)
+{
+    int ret = 0;
+
+    if((NULL == sysContext) || (sysContext->fd <= 0))
+        return -1;
+    
+    lseek(sysContext->fd, 0, SEEK_SET);
+    ret = write(sysContext->fd, &sysContext->globalData, SYSGLOBALDATA_SIZE);
+    if(ret != SYSGLOBALDATA_SIZE)
+    {
+        hat_error("write sysdata failure[%d]",ret);
+        return -1;
+    }
+    return 0;
+}
+
+int ReadSysGlobalData(PSysGlobalContext sysContext)
+{
+    int ret = 0;
+
+    if((NULL == sysContext) || (sysContext->fd <= 0))
+        return -1;
+    
+    lseek(sysContext->fd, 0, SEEK_SET);
+    ret = read(sysContext->fd, &sysContext->globalData, SYSGLOBALDATA_SIZE);
+    if(ret != SYSGLOBALDATA_SIZE)
+    {
+        hat_error("read sysdata failure[%d]",ret);
+        return -1;
+    }
+    return 0;
+}
+
+int InitSysGlobal()
+{
+    char filepath[FILE_PATH_MAX_LEN] = {0};
+    int fd = 0;
+    int ret = 0;
+    int flag = O_RDWR|O_EXCL;
+ 
+    snprintf(filepath, FILE_PATH_MAX_LEN, "%s/%s", DataDir, globalData);
+
+    if (access(filepath, F_OK) != 0)
+    {
+        flag |= O_CREAT;
+    }
+
+    fd = open(filepath, flag, 0600);
+    if(fd < 0)
+    {
+        hat_error("open %s failure. [%d]",filepath, errno);
+        return -1;
+    }
+
+    sysGlobalData.fd = fd;
+    
+    ret = ReadSysGlobalData(&sysGlobalData);
+
+    return ret;
+}
+
+int DestroySysGlobal()
+{
+    if(sysGlobalData.fd > 0)
+        close(sysGlobalData.fd );
+    return 0;
+}
+
+int GetAndIncObjectId()
+{
+    long long obj = atomic_fetch_add(&sysGlobalData.globalData.objectId, 1);
+    WriteSysGlobalData(&sysGlobalData);
+    return (int)obj;
 }

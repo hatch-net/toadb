@@ -1,6 +1,15 @@
 /*
  *	toadb table modify executor 
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 #include "execModifyTable.h"
 #include "tfile.h"
@@ -9,6 +18,7 @@
 #include "buffer.h"
 #include "execNode.h"
 #include "queryNode.h"
+#include "bufferPool.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,6 +85,8 @@ int nsm_ExecInsert(PTableList tblInfo, PTableRowData insertdata)
     {
         hat_log("write row to page failure.[%d]", ret);
     }
+
+    ReleasePage(pageInsert);
     return ret;
 }
 
@@ -129,7 +141,6 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
     int rowSize = 0;
     int oldRowSize = 0;
     int ret = 0;
-    int originPageIsDirty = 0;
 
     if(rowDataPos->num <= 0)
     {
@@ -157,17 +168,11 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
         }
 
         /* find free space in the undo page which is the group. */
-        undoPage = GetSpaceSpecifyPage(tblInfo, rowSize, PAGE_NEW, MAIN_FORK, originPage->undoPage.pageno, PAGE_UNDO);
+        undoPage = GetSpaceSpecifyPage(tblInfo, rowSize, PAGE_NEW, MAIN_FORK, originPage->header.pageNum, PAGE_UNDO);
         if(NULL == undoPage)
         {
             hat_error("get undo page error, no free space rest of disk. ");
             return -1;
-        }
-
-        if(IsInvalidPageNum(originPage->undoPage.pageno))
-        {
-            originPage->undoPage.pageno = undoPage->header.pageNum;
-            originPageIsDirty = HAT_TRUE;
         }
 
         /* old column rowdata */
@@ -192,7 +197,6 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
         {
             /* write only data replace. */
             ret = WriteRowDataOnly(tblInfo, originPage, newRowData, &(attrDataPos->headItem.itemData));
-            originPageIsDirty = HAT_FALSE;
         }
         else
         {
@@ -208,10 +212,14 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
             if(newRowPage->header.pageNum == originPage->header.pageNum)
             {
                 /* write only data other place of the same page. */
+                LockPage(newRowPage, BUF_WRITE);
+
                 oldItem = GET_ITEM(attrDataPos->headItem.itemOffset, newRowPage);
                 oldItem->offset = newRowPage->dataEndOffset - rowSize;
                 newRowPage->dataEndOffset = oldItem->offset;
                 ret = WriteRowDataOnly(tblInfo, newRowPage, newRowData, oldItem);
+                
+                UnLockPage(newRowPage, BUF_WRITE);
             }
             else
             {
@@ -219,18 +227,17 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
                 ret = WriteRowItemDataWithHeader(tblInfo, newRowPage, newRowData);
 
                 /* old item chang to redirect flag. */
+                LockPage(originPage, BUF_WRITE);
+
                 oldItem = GET_ITEM(attrDataPos->headItem.itemOffset, originPage);
                 oldItem->len |= ITEM_REDIRECT_MASK;
                 oldItem->offset = newRowData->rowPos.pageIndex.pageno;
                 oldItem->len = SetItemSize(oldItem->len, newRowData->rowPos.itemIndex);
-                originPageIsDirty = HAT_TRUE;
-            }
-        }
+                WritePage(tblInfo, originPage, MAIN_FORK);
 
-        if(originPageIsDirty)
-        {
-            WritePage(tblInfo, originPage, MAIN_FORK);
-        }        
+                UnLockPage(originPage, BUF_WRITE);
+            }
+        }  
 
         /* every column will be release resource */
         if(NULL != undoPage)
@@ -288,12 +295,15 @@ int pax_ExecInsert(PExecState eState, PTableList tblInfo, PTableRowData insertda
         return -1;
     }
 
+RETRY:
     /* find enough free space group page */
     do
     {
         ret = GetSpaceGroupPage(tblInfo, insertdata, PAGE_NEW, pageList, scanPageInfo);
         if(ret < 0)
         {
+            StartExtensionTbl(tblInfo);
+
             /* current groups has not enough free space, we extension a new group. */
             page = ExtensionTbl(tblInfo, tblInfo->tableDef->colNum, MAIN_FORK);
             if(NULL == page)
@@ -304,24 +314,23 @@ int pax_ExecInsert(PExecState eState, PTableList tblInfo, PTableRowData insertda
             /* update group file, insert one group data */
             InsertGroupItem(tblInfo, page, tblInfo->tableDef->colNum);
 
+            EndExtensionTbl(tblInfo);            
             ReleasePage(page);
         }
     } while (ret < 0);
 
     /* insert into pages */
-    rowData->rowsData.num = 1;
-    for(ColNum = 0; ColNum < insertdata->num; ColNum++)
-    {
-        rowData->rowsData.columnData[0] = insertdata->columnData[ColNum];
-        rowData->rowsData.size = insertdata->columnData[ColNum]->size;
-
-        ret = WriteRowItemDataWithHeader(tblInfo, pageList[ColNum], rowData);
-    }
+    ret = InsertRowDataWithGroup(tblInfo, insertdata, scanPageInfo);
 
     /* resource release */
     ReleasePageList(pageList, insertdata->num);
     
-    return 1;
+    if(ret == ESTAT_NO_SPACE)
+    {
+        goto RETRY;
+    }
+
+    return ret;
 }
 
 /*

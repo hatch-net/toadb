@@ -16,11 +16,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 #include "tsqlmain.h"
 #include "toadmain.h"
+#include "portal.h"
 #include "tsqlclient.h"
-
+#include "hatstring.h"
 #include "ipc.h"
 
 #define TOADB_VERSION "V100C001B001SPC001"
@@ -28,6 +30,7 @@
 extern char *DataDir; 
 char *serverAddr = "127.0.0.1";
 int serverPort = 6389;
+extern MsgHeader msg;
 
 static PClientSharedInfo clientSharedInfo = NULL;
 static enRunMode runMode = TSQL_RUN_CS_MODE;
@@ -38,6 +41,7 @@ void exitClientProc();
 
 static void RunClient();
 static void RunClientOnce(char *command);
+static int RunCsClientOnce(PMsgHeader msg);
 
 static void ShowResult();
 static int SendCommand(char *command);
@@ -48,7 +52,8 @@ int main(int argc, char *argv[])
     int	optindex;
 	int	c;
     int digit_optind = 0;
-    char *command = NULL;
+    char *command = msg.body;
+    int ret = 0;
 
     static struct option long_options[] =
     {
@@ -63,6 +68,8 @@ int main(int argc, char *argv[])
     /* getopt error */
     opterr = 1;
 
+    signal(SIGPIPE, SIG_IGN);
+
     atexit(exitClientProc);
 
     while((c =getopt_long(argc, argv, "D:C:H:P:-", 
@@ -74,9 +81,8 @@ int main(int argc, char *argv[])
                 DataDir = strdup(optarg);
             break;
             case 'C':
-                command = strdup(optarg);
-                if(runMode == TSQL_RUN_COMMAND)
-                    runMode = TSQL_RUN_ONLY_CLIENT;
+                snprintf(command, MAX_COMMAND_LENGTH, "%s", optarg);
+                runMode = TSQL_RUN_ONLY_CS_CLIENT;
             break;
             case 'H':
                 serverAddr = strdup(optarg);
@@ -109,6 +115,9 @@ int main(int argc, char *argv[])
 
     switch(runMode)
     {
+    case TSQL_RUN_ONLY_CS_CLIENT:
+        ret = RunCsClientOnce(&msg);
+    break;
     case TSQL_RUN_COMMAND:
         RunClient();
     break;
@@ -130,7 +139,7 @@ int main(int argc, char *argv[])
     break;
     }
 
-    return 0;
+    return ret;
 }
 
 static void showHelp()
@@ -235,6 +244,16 @@ int OnlyClientRun(char *command)
     return 0;
 }
 
+static int RunCsClientOnce(PMsgHeader msg)
+{
+    int len = hat_strlen(msg->body);
+    int ret = 0;
+
+    msg->size = len;
+    msg->type = PORT_MSG_REQUEST;
+    ret = CSClient_Once(msg);
+    return ret;
+}
 
 /* 
  * callback function.

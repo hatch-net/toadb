@@ -47,7 +47,6 @@ static int GeneralVirtualTableHead(PPortal portal);
 static int ClientRowDataShow(PPortal portal);
 
 
-
 int GetPortalSize()
 {
     int size = sizeof(Portal) ;
@@ -96,19 +95,16 @@ int InitPortal(PPortal portal)
  */
 int InitSelectPortal(PList targetList, PPortal portal)
 {
-    PListCell tmpCell = NULL;
-    PScanHeaderRowInfo rowInfo = NULL;
-    PTableList tblInfo = NULL;
-    int columnNum = 0;
+    int ret = 0;
 
     if(NULL == portal->targetList)
         portal->targetList = targetList;
     
     portal->flag = PORT_ROW_HEADER;
 
-    InitTargetAttrType(portal);
+    ret = InitTargetAttrType(portal);
 
-    return 0;
+    return ret;
 }
 
 /*
@@ -155,7 +151,7 @@ int SendToPortStr(PPortal portal, char *str)
     if((NULL == portal) || (NULL == str) || '\0' == str[0])
         return -1;
     
-    snprintf(portal->buffer, "%s", str);
+    snprintf(portal->buffer, PORT_BUFFER_SIZE, "%s", str);
 
     portal->flag = PORT_ROW_STRING;
     ret = SendToNetPort(portal);
@@ -229,6 +225,9 @@ static int SendToNetPort(PPortal portal)
             goto RET;
         }
 
+        portal->msgBody.size = ret;
+        FlushPortal(portal);
+
         ret = PortalSendRows(portal);
         if(ret <= 0)
         {
@@ -266,11 +265,19 @@ int EndPort(PPortal portal)
     FlushPortal(portal);
 
     if(NULL != portal->targetValTypeArr)
+    {
         FreeMem(portal->targetValTypeArr);
+        portal->targetValTypeArr = NULL;
+    }
 
     if(NULL != portal->attrWidth)
+    {
         FreeMem(portal->attrWidth);
+        portal->attrWidth = NULL;
+    }
 
+    portal->targetList = NULL;
+    portal->rowData = NULL;
     return 0;
 }
 
@@ -316,11 +323,8 @@ static int InitTargetAttrType(PPortal portal)
 
     int index = 0;
 
-    if(NULL == portal)
+    if((NULL == portal) || (NULL == portal->targetList) || (portal->targetList->length <= 0))
         return -1;
-
-    /* collect column data type */
-    vtArr = (valueType *)AllocMem(portal->targetList->length * sizeof(valueType));
 
      /* collect column data type */
     vtArr = (valueType *)AllocMem(portal->targetList->length * sizeof(valueType));

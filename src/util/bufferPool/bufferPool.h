@@ -89,6 +89,7 @@ typedef struct BufferPoolContext
     int elementSize;                /* per buffer size */
     int bufferNum;                  /* total buffers number. */
     int *freeList;                  /* first postion is head */
+    RWLockInfo lock;                /* free list protect. */
     PBufferElement bufferPool;      /* buffer array. */
     PBufferDesc bufferDesc;         /* buffer describe array, which is corosponding to buffer array. */
 }BufferPoolContext, *PBufferPoolContext;
@@ -100,8 +101,13 @@ typedef struct BufferPoolContext
 int InitBufferPool(PBufferPoolContext bufferPool, int pageNum);
 int ReleaseBufferPool(PBufferPoolContext bufferPool, int pageNum);
 
-int LockBuffer(PBufferDesc bufferDesc, BufferLockMode mode);
-int UnlockBuffer(PBufferDesc bufferDesc, BufferLockMode mode);
+int LockBufferDesc(PBufferDesc buffer, BufferLockMode mode);
+int UnlockBufferDesc(PBufferDesc buffer, BufferLockMode mode);
+
+#define LockBufDesc(buffer, mode) LockBufferDescEx(buffer, mode, __FUNCTION__, __LINE__)
+#define UnLockBufDesc(buffer, mode) UnlockBufferDescEx(buffer, mode, __FUNCTION__, __LINE__)
+int LockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line);
+int UnlockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line);
 
 int PinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId);
 int unPinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId);
@@ -110,14 +116,16 @@ BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool);
 BUFFERID ClockSweep(PBufferPoolContext bufferPool);
 
 int InvalidateBuffer(PBufferPoolContext bufferPool, PBufferDesc bufferDesc);
-int ReleaseBufferDesc(PBufferPoolContext bufferPool, PBufferDesc bufferDesc);
 int ReleaseBuffer(PBufferPoolContext bufferPool, PBufferElement bufferElemnet);
 
 PBufferTag GetBufferTag(PBufferPoolContext bufferPool, PBufferElement bufferElemnet);
+PBufferDesc GetBufferDesc(PBufferPoolContext bufferPool, PBufferElement bufferElemnet);
 
 /* flag set/clear */
 int SetBuffferDirty(PBufferPoolContext bufferPool, PBufferElement bufferElemnet);
 int ClearBufferDirty(PBufferPoolContext bufferPool, PBufferElement bufferElemnet);
 
 int SetBuffferValid(PBufferPoolContext bufferPool, PBufferElement bufferElemnet, int flag);
+
+
 #endif 

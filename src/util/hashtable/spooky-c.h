@@ -5,7 +5,7 @@
 //   Oct 31 2011: alpha again, Mix only good to 2^^69 but rest appears right
 //   Dec 31 2011: beta, improved Mix, tested it for 2-bit deltas
 //   Feb  2 2012: production, same bits as beta
-//   Feb  5 2012: adjusted definitions of uint* to be more portable
+//   Feb  5 2012: adjusted definitions of uint32* to be more portable
 //   Mar 30 2012: 3 bytes/cycle, not 4.  Alpha was 4 but wasn't thorough enough.
 //   Apr 27 2012: C version updated by Ziga Zupanec ziga.zupanec@gmail.com (agiz@github)
 //

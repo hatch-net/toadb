@@ -20,10 +20,8 @@
 
 #include <errno.h>
 
-#define hat_log printf
+
 extern char *DataDir;
-
-
 
 /*
  * executor of table create.
@@ -113,10 +111,12 @@ int ExecDropTable(PDropStmt stmt, PPortal portal)
         return -1;
     }
 
+    /* locktable */
     /* delete file */
     ret = TableDrop(tblInfo);
     
     ReleaseTblInfo(tblInfo);
+    /* unlocktable */
     return ret;
 }
 

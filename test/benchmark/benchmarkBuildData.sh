@@ -125,6 +125,20 @@ sh -c "${sql_command}"
 createTime=$(date "+%Y-%m-%d %H:%M:%S")
 echo "create endTime:" $createTime
 
+# functions 
+
+function executorSql()
+{
+  sql="$1"
+  sql_command="${toad_executor_command} \""${sql}"\" "
+#  sh -c "${sql_command}" | tee -a ${result_out}
+  sh -c "${sql_command}"
+  if [ $? -ne 0 ]; then
+    echo "cllient failure."
+    exit 1
+  fi
+}
+
 # load data 
 echo "---------------------------------------------------------"
 echo "load data............."
@@ -147,8 +161,8 @@ do
   bid=$a
 
   insertSql="insert into $tableName values($bid,0,'init');"
-  sql_command="${toad_executor_command} \"${insertSql}\" "
-  sh -c "${sql_command}" 
+  #echo ${insertSql}
+  executorSql "${insertSql}"
 
   echo "insert into $tableName bid:$bid" 
   let a++        
@@ -166,8 +180,8 @@ do
   bid=$(($tid / $ntellers + 1))
 
   insertSql="insert into $tableName values($tid,$bid,0,'init');"
-  sql_command="${toad_executor_command} \"${insertSql}\" "
-  sh -c "${sql_command}"
+  #echo ${insertSql}
+  executorSql "${insertSql}"
 
   echo "insert into $tableName tid:$tid" 
   let a++        
@@ -188,7 +202,7 @@ do
   insertSql="insert into $tableName values($aid,$bid,0,'i')"
   let a++ 
 
-  for number in {1..99}; do   
+  for number in {1..19}; do   
     aid=$a
     bid=$(($aid / $naccounts + 1))
 
@@ -198,10 +212,11 @@ do
     let a++  
   done
 
-  # echo ${insertSql}
+  insertSql="${insertSql};"
+  #echo ${insertSql}
   
-  sql_command="${toad_executor_command} \"${insertSql};\" "
-  sh -c "${sql_command}" 
+  executorSql "${insertSql}"
+
   echo "insert into $tableName aid:$aid"      
 done
 

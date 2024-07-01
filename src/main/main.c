@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 
 int test_pro(int argc, char *argv[])
 {
-	SyslogInit();
+	//SyslogInit();
 
 	printf("abc test\n");
 	return 0;

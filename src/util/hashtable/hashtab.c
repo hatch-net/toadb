@@ -16,11 +16,12 @@
 #include "public.h"
 #include "hatstring.h"
 #include "spooky-c.h"
-
+#include "bufferPool.h"
 
 //#define debug_hash(...) log_report(LOG_INFO, __VA_ARGS__) 
 #define debug_hash(...) 
-
+//#define  debug_hash_show(...) log_report(LOG_INFO, __VA_ARGS__) 
+#define  debug_hash_show(...)
 static HASHKEY getHashKey(char *value, int valueSize);
 static int compareHashElement(char *value1, char *value2, int valueSize);
 static int valueCopy(PHashElement element, char *value, int valueSize);
@@ -145,7 +146,10 @@ static int InitHashTable(PHashTableInfo hashTableInfo)
         element = element->link;        
     }
     element->link = NULL;
+    hashTableInfo->freeNum = hashTableInfo->maxNum;
     SpinLockInit(&hashTableInfo->freeListLock);
+
+    hashTableInfo->usedNum = 0;
 
     /* segment */
     hashTableInfo->segmentArray = (PHashSegment)((char*)hashTableInfo + offset);
@@ -213,15 +217,20 @@ int HashDeleteEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value)
     HashLockPartition(hashTableInfo, partIndex);
 
     bucket = GetBucketIndex(key, hashTableInfo);
+    
     entry = DeleteHashEntryFromBucket(hashTableInfo, &(hashTableInfo->segmentArray[partIndex].segBuckets[bucket]), key, value);
+    debug_hash("del part:%d bucket:%d key:%0x entry:%p usedNum:%d ", partIndex, bucket, key, entry, hashTableInfo->usedNum);
+
 
     HashLockPartitionRelease(hashTableInfo, partIndex);
 
-    debug_hash("del part:%d bucket:%d key:%0x entry:%p", partIndex, bucket, key, entry);
     if(NULL != entry)
+    {
         PutFreeList(hashTableInfo, entry);
+        return 0;
+    }
 
-    return 0;
+    return -1;
 }
 
 PHashElement HashFindEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value, int partition)
@@ -235,34 +244,49 @@ PHashElement HashFindEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *valu
     return entry;
 }
 
-PHashElement HashGetFreeEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value)
+PHashElement HashGetFreeEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value, int *flag)
 {
     PHashElement entry = NULL;
     int partIndex = 0;
     int bucket = 0;
-
-    /* get free elemnet */
-    entry = GetFromFreeList(hashTableInfo);
-    if(NULL == entry)
-    {
-        hat_error("hash table %s is not enogh element rest.", hashTableInfo->name);
-        return NULL;
-    }
 
     partIndex = GetPartitionIndex(key, hashTableInfo);
     HashLockPartition(hashTableInfo, partIndex);
 
     bucket = GetBucketIndex(key, hashTableInfo);
     
+    /* find again. */
+    entry = GetHashEntryFromBucket(hashTableInfo, hashTableInfo->segmentArray[partIndex].segBuckets[bucket], key, value);
+    if(entry != NULL)
+    {
+        /* this key-value map is added by other workers. */
+        *flag = HASH_FIND;
+        HashLockPartitionRelease(hashTableInfo, partIndex);
+        return entry;
+    }
+
+    /* get free elemnet */
+    entry = GetFromFreeList(hashTableInfo);
+    if(NULL == entry)
+    {
+        HashLockPartitionRelease(hashTableInfo, partIndex);
+        *flag = HASH_NULL;
+        hat_error("hash table %s is not enogh element rest.", hashTableInfo->name);
+        return NULL;
+    }
+
     /* insert to segment */
     entry->link = hashTableInfo->segmentArray[partIndex].segBuckets[bucket];
     hashTableInfo->segmentArray[partIndex].segBuckets[bucket] = entry;
+    hashTableInfo->usedNum += 1; 
 
-    HashLockPartitionRelease(hashTableInfo, partIndex);
-
-    debug_hash("insert part:%d bucket:%d key:%0x entry:%p", partIndex, bucket, key, entry);
     entry->hashKey = key;
     hashTableInfo->hashValueCopy(entry, value, hashTableInfo->valueSize);
+
+    debug_hash("insert part:%d bucket:%d key:%0x entry:%p usedNum:%d", partIndex, bucket, key, entry, hashTableInfo->usedNum);
+    HashLockPartitionRelease(hashTableInfo, partIndex);
+
+    *flag = HASH_INSERT;
     return entry;
 }
 
@@ -272,12 +296,6 @@ char * GetEntryValue(PHashElement element)
 
     return pvalue;
 }
-
-int HashEntryProcess(PHashTableInfo hashTableInfo, HASHKEY key, char *value, int valueSize, HashOp op)
-{
-    return 0;
-}
-
 
 static PHashElement GetFromFreeList(PHashTableInfo hashTableInfo)
 {
@@ -290,8 +308,11 @@ static PHashElement GetFromFreeList(PHashTableInfo hashTableInfo)
         entry = hashTableInfo->freeHashElementList;
         hashTableInfo->freeHashElementList = entry->link;
         entry->link = NULL;
+
+        hashTableInfo->freeNum -= 1;
     }
     
+    debug_hash("free pop entry:%p Num:%d", entry, hashTableInfo->freeNum);
     HashLockReleaseFreeList(hashTableInfo);
 
     return entry;
@@ -306,7 +327,8 @@ static void PutFreeList(PHashTableInfo hashTableInfo, PHashElement entry)
     
     entry->link = hashTableInfo->freeHashElementList;
     hashTableInfo->freeHashElementList = entry;
-    
+    hashTableInfo->freeNum += 1;
+    debug_hash("free add entry:%p Num:%d", entry, hashTableInfo->freeNum);
     HashLockReleaseFreeList(hashTableInfo);
 
     return ;
@@ -361,6 +383,7 @@ PHashElement DeleteHashEntryFromBucket(PHashTableInfo hashTableInfo, PHashElemen
             }
 
             preelement->link = element->link;
+            hashTableInfo->usedNum -= 1;
             break;
         }
 
@@ -387,3 +410,63 @@ static int valueCopy(PHashElement element, char *value, int valueSize)
     memcpy(dest, value, valueSize);
     return 0;
 }
+
+
+void ShowHashTableValues(PHashTableInfo hashTableInfo, PBufferPoolContext bufferPool)
+{
+    PHashElement element = NULL;
+    PHashSegment segment = NULL;
+    PBufferPoolHashValue value = NULL;
+
+    int bucketNum = 0;
+    int segmentIndex = 0;
+    int total = 0;
+    int bufferId = 0;
+    int equal = 0;
+
+    segment = hashTableInfo->segmentArray;
+    for(; segmentIndex < hashTableInfo->partitionNum; segmentIndex++)
+    {
+        /* buckets */
+        for(bucketNum = 0; bucketNum < hashTableInfo->hashSegmentSize; bucketNum++)
+        {
+            element = segment->segBuckets[bucketNum];
+            while(element != NULL)
+            {
+                value = (PBufferPoolHashValue)GetValue(element);
+
+                bufferId = value->bufferId;
+                equal = 0;
+                if((bufferPool->bufferDesc[bufferId].bufferTag.pageno == value->tag.pageno) 
+                    && (bufferPool->bufferDesc[bufferId].bufferTag.forkNum == value->tag.forkNum))
+                {
+                    equal = 1;
+                }
+
+                debug_hash_show("used:%d partition:%d bucket:%d key:%0x bufferid:%d value(%d-%d) page(%d-%d) equal:%d bufdesc(%d-%d-%d)", 
+                        total,
+                        segmentIndex, 
+                        bucketNum,
+                        element->hashKey, 
+                        value->bufferId,
+                        bufferPool->bufferDesc[bufferId].bufferTag.pageno,
+                        bufferPool->bufferDesc[bufferId].bufferTag.forkNum,
+                        value->tag.pageno,
+                        value->tag.forkNum,
+                        equal,
+                        bufferPool->bufferDesc[bufferId].usedCnt,
+                        bufferPool->bufferDesc[bufferId].refCnt,
+                        bufferPool->bufferDesc[bufferId].isValid);
+                
+                total++;
+                element = element->link;
+            }
+        }
+
+        segment++;
+    }
+
+
+
+}
+

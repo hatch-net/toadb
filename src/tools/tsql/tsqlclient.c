@@ -21,33 +21,33 @@
 #include "logger.h"
 #include "hatstring.h"
 #include "portal.h"
+#include "netclient.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/epoll.h>
 
 extern char *serverAddr ;
 extern int serverPort ;
+MsgHeader msg = {0};
 
 static ThreadLocal TCPContext tsqlClient_context = {0};
 static ClientContext client = {0};
 
-static int WriteMessage(PEventProcInfo info);
-static int ReadMessage(PEventProcInfo info);
+static int WriteMessage(PEventProcInfo info, MessageProc msgProc);
+static int ReadMessage(PEventProcInfo info, MessageProc msgProc);
+static int ShowResult(char *message, int len);
 
 static int InitClient();
 static int InitClientContext();
 static int ConnectServer(int port, char *addr);
-static int ProcessClient(char *command, int len);
+static int ProcessClient(PMsgHeader msg);
 
-static int ShowResult(char *message, int len);
-
-static int GetMsgIntValue(char *buf, int *type);
-static int ParserMsg(char *msg, int len);
 
 
 int CSClient_main(int argc, char *argv[])
 {
-    char command[MAX_COMMAND_LENGTH] = {0};
+    char *command = msg.body;
     int len = 0;
     int ret = 0;
 
@@ -60,7 +60,10 @@ int CSClient_main(int argc, char *argv[])
         if((len = ReadClientCommand(command)) < 0)
             break;
         
-        ret = ProcessClient(command, len);
+        msg.size = len;
+        msg.type = PORT_MSG_REQUEST;
+        
+        ret = ProcessClient(&msg);
         if(ret < 0)
         {
             hat_error("server is disconnected, we will exit.");
@@ -69,7 +72,27 @@ int CSClient_main(int argc, char *argv[])
     }while(1);
 
     CloseSocket(tsqlClient_context.sock_fd);
-    close(tsqlClient_context.epoll_fd);
+    CloseSocket(tsqlClient_context.epoll_fd);
+
+    return ret;
+}
+
+int CSClient_Once(PMsgHeader msg)
+{
+    int ret = 0;
+    
+    ret = InitClient();
+    if(ret < 0)
+        return ret;
+
+    ret = ProcessClient(msg);
+    if(ret < 0)
+    {
+        hat_error("server is disconnected, we will exit.");
+    }
+
+    CloseSocket(tsqlClient_context.sock_fd);
+    CloseSocket(tsqlClient_context.epoll_fd);
 
     return ret;
 }
@@ -97,14 +120,14 @@ static int InitClient()
     return ret;
 }
 
-static int ProcessClient(char *command, int len)
+static int ProcessClient(PMsgHeader msg)
 {
     int ret = 0;
     struct epoll_event events[MAX_EVENT_SIZE];
     EventProcInfo info = {0};
 
-    client.clientStatus = CS_SENDCOMMD;
-    ret = WriteData(tsqlClient_context.sock_fd, command, len);
+    client.clientStatus |= CS_SENDCOMMD;
+    ret = WriteData(tsqlClient_context.sock_fd, (char*)msg, msg->size + MSG_HEADER_LEN);
     if(ret < 0)
     {
         hat_error("send command failure.");
@@ -113,10 +136,9 @@ static int ProcessClient(char *command, int len)
 
     tsqlClient_context.info = &info;
     do {
-        info.message += 1;
         /* epoll wait write/read. */
         ret = EpollProcess(&tsqlClient_context, events, MAX_EVENT_SIZE, -1);
-    }while((ret >= 0) && (client.clientStatus != CS_FINISH));
+    }while((ret >= 0) && ((client.clientStatus & CS_CLIENT_STATE_MASK) != CS_FINISH));
 
     /* recevied 'transaction command end' */
     client.clientStatus = CS_IDLE;
@@ -127,6 +149,7 @@ static int InitClientContext()
 {
     tsqlClient_context.readProc = ReadMessage;
     tsqlClient_context.writeProc = WriteMessage;
+    tsqlClient_context.msgProc = ShowResult;
 
     tsqlClient_context.maxEvent = MAX_EVENT_SIZE;
     return 0;
@@ -146,36 +169,54 @@ static int ConnectServer(int port, char *addr)
     return ret;
 }
 
-static int ReadMessage(PEventProcInfo info)
+static int ReadMessage(PEventProcInfo info, MessageProc msgProc)
 {
-    int len = info->len;
-    char *message = info->buffer;
+    int len = 0;
+    char *message = NULL;
     int ret = 0;
 
-    if(len <= 0)
+    if(0 == (info->message & TS_BLOCK_READ))
     {
-        hat_error("connect is close by remote.");
-        return -1;
+        /* process msg */
+        len = info->len;
+        message = info->buffer;
+
+        if(len <= 0)
+        {
+            hat_error("connect is close by remote.");
+            return -1;
+        }
     }
 
     do {
-        ret = ParserMsg(message, len);        
+        ret = ParserMsg(message, len, &client);        
         if(client.msg.type == PORT_MSG_FINISH)
         {
-            client.clientStatus = CS_FINISH;
+            client.clientStatus |= CS_FINISH;
             break;
         }
 
-        ShowResult(client.msg.body, client.msg.size);
+        if(msgProc != NULL)
+            msgProc(client.msg.body, client.msg.size);
+
         memset(&client.msg, 0x00, sizeof(client.msg));
         message = NULL;
         len = 0;
     }while(ret > 0);    /* until empty */
     
+    if(client.clientStatus & CS_BLOCK)
+    {
+        info->message |= TS_BLOCK_READ;
+    }
+    else 
+    {
+        info->message &= ~TS_BLOCK_READ;
+    }
+
     return 0;
 }
 
-static int WriteMessage(PEventProcInfo info)
+static int WriteMessage(PEventProcInfo info, MessageProc msgProc)
 {
     /* TODO: nothing */
     return 0;
@@ -189,87 +230,4 @@ static int ShowResult(char *message, int len)
     //snprinf(buffer, len, "%s", message);
     printf("%s\n", message);
     return 0;
-}
-
-static int ParserMsg(char *msg, int len)
-{
-    int msgOffset = 0;
-    int restOffset = 0;
-    int tmpLen = 0;
-    int useMsg = 0;
-
-    if(len + client.restLen < MSG_HEADER_LEN)
-    {
-        /* msg header is not enogh . */
-        return 0;
-    }
-
-    /* first fill rest with msg header len */
-    if(client.restLen < MSG_HEADER_LEN)
-    {
-        tmpLen = MSG_HEADER_LEN - client.restLen;
-        memcpy(client.restMsg + client.restLen, msg, tmpLen);
-        client.restLen += tmpLen;
-        msgOffset += tmpLen;
-    }
-
-    restOffset += GetMsgIntValue(client.restMsg, &client.msg.type);
-    restOffset += GetMsgIntValue(client.restMsg + restOffset, &client.msg.size);
-
-    if(client.msg.size > (client.restLen + len - msgOffset))
-    {
-        useMsg = 1;
-        goto RESTMSG;
-    }
-
-    /* rest context is fullfill one entire msg. */
-    if((client.restLen - restOffset) < client.msg.size)
-    {
-        tmpLen = client.msg.size - client.restLen + restOffset;
-        if(len - msgOffset >= tmpLen)
-        {
-            memcpy(client.restMsg + client.restLen, msg + msgOffset, tmpLen);
-            client.restLen += tmpLen;
-            msgOffset += tmpLen;
-        }
-        else 
-        {
-            useMsg = 1;
-            goto RESTMSG;
-        }
-    }
-
-    /* fill entire message */
-    memcpy(client.msg.body, client.restMsg + restOffset, client.msg.size);
-    restOffset += client.msg.size;
-    client.restLen -= restOffset;
-
-RESTMSG:
-    if(useMsg)
-    {
-        /* wait context, rollback */
-        restOffset -= MSG_HEADER_LEN;
-        client.msg.type = 0;
-        client.msg.size = 0;
-    }
-
-    /* clean restmsg */
-    if((restOffset > 0) && (client.restLen > 0))
-        memcpy(client.restMsg, client.restMsg + restOffset, client.restLen);
-
-    /* save the rest msg */
-    tmpLen = len - msgOffset;
-    if(tmpLen > 0)
-    {
-        memcpy(client.restMsg + client.restLen, msg + msgOffset, tmpLen);
-        client.restLen += tmpLen;
-    }
-    return client.msg.size;
-}
-
-static int GetMsgIntValue(char *buf, int *type)
-{
-    int typelen = sizeof(int);
-    *type = *((int *) buf);
-    return typelen;
 }

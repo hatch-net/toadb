@@ -27,7 +27,12 @@ function excuteSql()
     sql=$1
     echo "excute $sql" | tee -a ${result_out}
     sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}" | tee -a ${result_out}
+    #sh -c "${sql_command}" | tee -a ${result_out}
+    sh -c "${sql_command}" 
+    if [ $? -ne 0 ]; then
+        echo "cllient failure."
+        exit 1
+    fi
 }
 
 function createSimple()

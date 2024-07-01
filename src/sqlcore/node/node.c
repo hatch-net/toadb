@@ -7,9 +7,7 @@
 #include "node.h"
 #include "buffer.h"
 #include "memStack.h"
-
-#define hat_log printf
-#define debug 
+#include "logger.h"
 
 /*
  *  create empty node
@@ -22,7 +20,7 @@ PNode CreateNode(int size, NodeType type)
         hat_log("list create, not enough memory.");
         exit(1);
     }
-    debug("CreateNode node:%p size:%d ", node, size);
+    hat_debug("CreateNode node:%p size:%d ", node, size);
 
     node->type = type;
 }
@@ -49,7 +47,7 @@ PList CreateCell(PList list)
         list->length = 0;
     }
 
-    debug("CreateCell list:%p size:%d, cell:%p size:%d ", list,sizeof(List), cell, sizeof(ListCell));
+    hat_debug("CreateCell list:%p size:%d, cell:%p size:%d ", list,sizeof(List), cell, sizeof(ListCell));
 
     /* add cell to this list */
     if(list->length == 0)
@@ -104,7 +102,7 @@ PList AppendNode(PList list, PNode n)
     cell->next = NULL;
     cell->value.pValue = n;
 
-    debug("AppendCell list:%p size:%d, cell:%p size:%d ", list,sizeof(List), cell, sizeof(ListCell));
+    hat_debug("AppendCell list:%p size:%d, cell:%p size:%d ", list,sizeof(List), cell, sizeof(ListCell));
 
     /* add cell to this list */
     if(list->length == 0)

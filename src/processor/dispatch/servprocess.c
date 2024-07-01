@@ -19,6 +19,7 @@
 #include "toadmain.h"
 #include "hatstring.h"
 #include "portal.h"
+#include "netclient.h"
 
 #include "public_types.h"
 
@@ -27,6 +28,7 @@ char servIP[IPV4_ADDRESS_LEN];
 int backlog = 10;
 
 static ThreadLocal ServerContextInfo servContext;
+static ThreadLocal ClientContext cliContext;
 
 static int ProcessQuery(PThreadTaskInfo taskInfo);
 
@@ -75,7 +77,7 @@ int ServerLoop()
         if(ret < 0)
         {
             hat_error("client is over limited,  client %d maybe rejected.", clientfd);
-            close(clientfd);
+            CloseSocket(clientfd);
         }
     }
 
@@ -113,9 +115,33 @@ int BeginTask(PThreadTaskInfo taskInfo)
     return 0;
 }
 
+/* 
+ *
+ */
+static int ReadMsg(PClientContext client)
+{
+    int len = 0;
+    char command[MAX_COMMAND_LENGTH] = {0};
+
+    memset((char *)&client->msg, 0x00, sizeof(MsgHeader));
+    do {
+        len = ReadData(servContext.servfd, command, MAX_COMMAND_LENGTH);
+        if(len <= 0)
+        {
+            hat_error("client interrupt connecting.");
+            break;
+        }
+
+        len = ParserMsg(command, len, client);
+    } while(len <= 0);
+
+    /* received one command. */
+    return len;
+}
+
 static int ProcessQuery(PThreadTaskInfo taskInfo)
 {
-    char command[MAX_COMMAND_LENGTH] = {0};
+    char *command = cliContext.msg.body;
     int ret = 0;
 
     if(NULL == taskInfo)
@@ -127,7 +153,7 @@ static int ProcessQuery(PThreadTaskInfo taskInfo)
     {
         InitPortal(GetServPortal());
 
-        ret = ReadData(servContext.servfd, command, MAX_COMMAND_LENGTH);
+        ret = ReadMsg(&cliContext);
         if(ret <= 0)
         {
             hat_error("client interrupt connecting.");

@@ -21,6 +21,14 @@
 #include "parserNode.h"
 #include "relCache.h"
 
+typedef enum EStat_RET
+{
+    ESTAT_ERORR     =   0,
+    ESTAT_SUCESS    =   1,
+    ESTAT_NO_SPACE  =   2,
+    ESTAT_UNKNOW
+}EStat_RET;
+
 typedef struct ScanPageInfo  *PScanPageInfo;
 
 typedef struct GroupItemData
@@ -114,7 +122,7 @@ PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchIn
 PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, int pageOffset, PHeapItemData heapItemData);
 
 //PTableRowData GetRowDataFromExtPage(PTableList tblInfo, int pageno, int itemIndex);
-PRowColumnData GetRowDataFromExtPageEx(PTableList tblInfo, int pageno, int itemIndex, PHeapItemData heapItemData);
+PRowColumnData GetRowDataFromExtPageEx(PPageDataHeader page, int itemIndex, PHeapItemData heapItemData);
 
 /* form row data and deform column data */
 PTableRowData FormRowData(PTableMetaInfo tblMeta, PInsertStmt stmt);
@@ -137,8 +145,9 @@ int UpdateGroupMetaData(PTableList tblInfo, PGroupPageHeader page);
 int UpdateTableMetaData(PTableList tblInfo, PPageDataHeader page);
 
 /* buffer operator */
-int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
+int InsertRowDataWithGroup(PTableList tblInfo, PTableRowData insertdata, PScanPageInfo scanPageInfo);
 
+int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
 int WriteRowItemData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
 int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row);
 
@@ -147,5 +156,15 @@ int WriteRowDataOnly(PTableList tblInfo, PPageDataHeader page, PRowData row, PIt
 PPageDataHeader ReadPage(PTableList tblInfo, int index, ForkType forkNum);
 int WritePage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum);
 int FlushPage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum);
+
+
+int LockBuffer(PPageDataHeader page, int mode);
+int UnLockBuffer(PPageDataHeader page, int mode);
+
+
+#define LockPage(page, mode) LockBufferEx(page, mode, __FUNCTION__, __LINE__)
+#define UnLockPage(page, mode) UnLockBufferEx(page, mode, __FUNCTION__, __LINE__)
+int LockBufferEx(PPageDataHeader page, int mode, char *fun, int line);
+int UnLockBufferEx(PPageDataHeader page, int mode, char *fun, int line);
 
 #endif

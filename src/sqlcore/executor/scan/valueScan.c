@@ -11,8 +11,6 @@
 #include "scan.h"
 #include "memStack.h"
 
-#define hat_log printf
-
 
 /* values relation  scan */
 static PTableRowData ValueScanNext(PExecState eState);

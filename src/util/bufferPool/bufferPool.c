@@ -18,8 +18,12 @@
 
 #include <string.h>
 
-// #define hat_debug_buffPool(...) log_report(LOG_INFO, __VA_ARGS__) 
-#define hat_debug_buffPool(...) 
+//#define hat_debug_buffPool(...) log_report(LOG_INFO, __VA_ARGS__) 
+//#define hat_debug_bufflock(...) log_report(LOG_INFO, __VA_ARGS__) 
+#define hat_debug_bufflock(...) 
+//#define hat_debug_buffPool_ClockSweep(...) log_report(LOG_INFO, __VA_ARGS__) 
+#define hat_debug_buffPool_ClockSweep(...)
+ #define hat_debug_buffPool(...) 
 
 static int InsertFreeList(PBufferPoolContext bufferPool, BUFFERID id);
 
@@ -42,6 +46,8 @@ int InitBufferPool(PBufferPoolContext bufferPool, int pageNum)
     bufferPool->bufferDesc = (PBufferDesc)(bufferPool + 1);
     bufferPool->bufferPool = (PBufferElement)(bufferPool->bufferDesc + bufferPool->bufferNum);
     bufferPool->freeList = (int *)(bufferPool->bufferPool + bufferPool->bufferNum);
+
+    InitRWLock(&bufferPool->lock);
 
     /* initialize array value */
     for(index = 0; index < pageNum; index ++)
@@ -85,35 +91,13 @@ int InvalidateBuffer(PBufferPoolContext bufferPool, PBufferDesc bufferDesc)
     return 0;
 }
 
-int ReleaseBufferDesc(PBufferPoolContext bufferPool, PBufferDesc bufferDesc)
-{
-    BUFFERID bufferId = GetBufferDescID(bufferPool, bufferDesc);
-
-    if(bufferDesc->refCnt > 0)
-    {
-        bufferDesc->refCnt -= 1;
-    }
-
-    hat_debug_buffPool("release buffer id=%d refCnt=%d, buftag[%d,%d,%d]", 
-                                        bufferId, bufferDesc->refCnt, 
-                                        bufferDesc->bufferTag.tableId,
-                                        bufferDesc->bufferTag.pageno,
-                                        bufferDesc->bufferTag.forkNum);
- // let clocksweep to do.                                      
- //   if(bufferDesc->refCnt == 0)
- //   {
- //       InsertFreeList(bufferPool, bufferId);
- //   }
-    
-    return 1;
-}
-
 int ReleaseBuffer(PBufferPoolContext bufferPool, PBufferElement bufferElemnet)
 {
-    BUFFERID bufferId = GetBufferID(bufferPool, bufferElemnet);
     int ret = 0;
+    BUFFERID bufferId = GetBufferID(bufferPool, bufferElemnet);
 
-    ret = ReleaseBufferDesc(bufferPool, &(bufferPool->bufferDesc[bufferId]));
+    ret = unPinBuffer(bufferPool, bufferId);
+
     return ret;
 }
 
@@ -123,6 +107,15 @@ PBufferTag GetBufferTag(PBufferPoolContext bufferPool, PBufferElement bufferElem
     BUFFERID bufferId = GetBufferID(bufferPool, bufferElemnet);
 
     return &(bufferPool->bufferDesc[bufferId].bufferTag);
+}
+
+PBufferDesc GetBufferDesc(PBufferPoolContext bufferPool, PBufferElement bufferElemnet)
+{
+    PBufferDesc desc = NULL;
+    BUFFERID bufferId = GetBufferID(bufferPool, bufferElemnet);
+
+    desc = &(bufferPool->bufferDesc[bufferId]);
+    return desc;
 }
 
 int SetBuffferDirty(PBufferPoolContext bufferPool, PBufferElement bufferElemnet)
@@ -168,11 +161,17 @@ int unPinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId)
         bufferPool->bufferDesc[bufferId].refCnt -= 1;
     }
 
+    hat_debug_buffPool("release buffer id=%d refCnt=%d, buftag[%d,%d,%d]", 
+                                        bufferId, bufferPool->bufferDesc[bufferId].refCnt, 
+                                        bufferPool->bufferDesc[bufferId].bufferTag.tableId,
+                                        bufferPool->bufferDesc[bufferId].bufferTag.pageno,
+                                        bufferPool->bufferDesc[bufferId].bufferTag.forkNum);
     return 0;
 }
 
 static int InsertFreeList(PBufferPoolContext bufferPool, BUFFERID id)
 {
+    AcquireLock(&bufferPool->lock, RWLock_WRITE);
     /* id = 0, not save to this list. */
     if((id > 0) && (bufferPool->bufferDesc[id].isInFreeList == 0))
     {
@@ -181,13 +180,17 @@ static int InsertFreeList(PBufferPoolContext bufferPool, BUFFERID id)
 
         bufferPool->bufferDesc[id].isInFreeList = 1;
     }
+    ReleaseLock(&bufferPool->lock, RWLock_WRITE);
     return 0;
 }
 
 BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool)
 {
-    BUFFERID id = bufferPool->freeList[0];
+    BUFFERID id = 0;
 
+    AcquireLock(&bufferPool->lock, RWLock_WRITE);
+
+    id = bufferPool->freeList[0];
     while(id != Free_List_End)
     {
         id = bufferPool->freeList[0];
@@ -203,18 +206,20 @@ BUFFERID GetFreeBufferId(PBufferPoolContext bufferPool)
         hat_debug_buffPool("free buffer id=%d refCnt=%d bufferNum=%d", id, bufferPool->bufferDesc[id].refCnt, bufferPool->bufferNum);
     }
 
+    ReleaseLock(&bufferPool->lock, RWLock_WRITE);
     return id;
 }
 
-
-
-static BUFFERID start = 0;
+volatile BUFFERID start = 0;
 BUFFERID ClockSweep(PBufferPoolContext bufferPool)
 {
     BUFFERID id = start;
 
+RETRY:
     for( ; ; id = (id+1) % bufferPool->bufferNum)
     {
+        LockBufDesc(&bufferPool->bufferDesc[id], BUF_READ);
+
         hat_debug_buffPool("clocksweep id=%d usedCnt=%d isValid=%d refCnt=%d", 
                     id, 
                     bufferPool->bufferDesc[id].usedCnt, 
@@ -229,26 +234,46 @@ BUFFERID ClockSweep(PBufferPoolContext bufferPool)
         /* after usedCnt minus one, current circle is find one. */
         if((0 == bufferPool->bufferDesc[id].refCnt) && (0 == bufferPool->bufferDesc[id].usedCnt))
             break;
+        UnLockBufDesc(&bufferPool->bufferDesc[id], BUF_READ);
+    }
+    UnLockBufDesc(&bufferPool->bufferDesc[id], BUF_READ);
+    
+    /* loading process protected by the lock, other will wait lock release. */
+    LockBufDesc(&bufferPool->bufferDesc[id], BUF_WRITE);
+
+    if((BVF_INVALID == bufferPool->bufferDesc[id].isValid) 
+        || ((0 == bufferPool->bufferDesc[id].refCnt) && (0 == bufferPool->bufferDesc[id].usedCnt)))
+    {
+        hat_debug_buffPool_ClockSweep("clocksweep id=%d start=%d ", id, start);
+        start = (id + 1) % bufferPool->bufferNum;
+    }
+    else 
+    {
+        UnLockBufDesc(&bufferPool->bufferDesc[id], BUF_WRITE);
+        goto RETRY;
     }
 
-    hat_debug_buffPool("clocksweep id=%d start=%d ", id, start);
-
-    start = (id + 1) % bufferPool->bufferNum;
     return id;
 }
 
-int LockBuffer(PBufferDesc bufferDesc, BufferLockMode mode)
+int LockBufferDesc(PBufferDesc buffer, BufferLockMode mode)
 {
-    if(NULL == bufferDesc)
-        return -1;
-
-    return AcquireRWLock(&bufferDesc->lock, mode);
+    return AcquireRWLock(&buffer->lock, mode);
 }
 
-int UnlockBuffer(PBufferDesc bufferDesc, BufferLockMode mode)
+int UnlockBufferDesc(PBufferDesc buffer, BufferLockMode mode)
 {
-    if(NULL == bufferDesc)
-        return -1;
+    return ReleaseRWLock(&buffer->lock, mode);
+}
 
-    return ReleaseRWLock(&bufferDesc->lock, mode);
+int LockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line)
+{
+    hat_debug_bufflock("LockBufferDescEx desc %p mode %d [%s][%d]", buffer, mode, fun, line);
+    return LockBufferDesc(buffer, mode);
+}
+
+int UnlockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line)
+{
+    hat_debug_bufflock("UnlockBufferDescEx desc %p mode %d [%s][%d]", buffer, mode, fun, line);
+    return UnlockBufferDesc(buffer, mode);
 }

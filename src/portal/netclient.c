@@ -15,7 +15,10 @@
 
 #include "netclient.h"
 #include "queryNode.h"
+#include "hatstring.h"
+#include "tcpsock.h"
 
+static int GetMsgIntValue(char *buf, int *type);
 
 /* format head line */
 int GeneralVirtualTableHeadRaw(PPortal portal)
@@ -45,7 +48,7 @@ int GeneralVirtualTableHeadRaw(PPortal portal)
             colName = columnRefNode->field;
 
         snprintf(pbuf + offset, PORT_BUFFER_SIZE - offset, "|%s", colName);
-        offset = strlen(pbuf);
+        offset = hat_strlen(pbuf);
     }
 
     snprintf(pbuf + offset, PORT_BUFFER_SIZE - offset, "|");
@@ -66,7 +69,7 @@ int WritePortalMessage(PPortal portal)
     if(portal->clientFd <= 0)
         return -2;
     
-    len = WriteData(portal->clientFd, &portal->msgBody, portal->msgBody.size+MSG_HEADER_LEN);
+    len = WriteData(portal->clientFd, (char *)&portal->msgBody, portal->msgBody.size+MSG_HEADER_LEN);
 
     return len;
 }
@@ -104,4 +107,103 @@ int PortalSendRows(PPortal portal)
 
     ret = ClientRowDataSend(portal);
     return ret;
+}
+
+
+int ParserMsg(char *msg, int len, PClientContext client)
+{
+    int msgOffset = 0;
+    int restOffset = 0;
+    int tmpLen = 0;
+    int useMsg = 0;
+
+    if(len + client->restLen < MSG_HEADER_LEN)
+    {
+        /* msg header is not enogh . */
+        return 0;
+    }
+
+    /* first fill rest with msg header len */
+    if(client->restLen < MSG_HEADER_LEN)
+    {
+        tmpLen = MSG_HEADER_LEN - client->restLen;
+        memcpy(client->restMsg + client->restLen, msg, tmpLen);
+
+        client->restLen += tmpLen;
+        msgOffset += tmpLen;
+    }
+
+    restOffset += GetMsgIntValue(client->restMsg, &client->msg.type);
+    restOffset += GetMsgIntValue(client->restMsg + restOffset, &client->msg.size);
+    if(client->msg.size >= PORT_BUFFER_SIZE)
+    {
+        hat_error("restLen:%d len:%d size:%d", client->restLen, len, client->msg.size);
+        return -1;
+    }
+
+    if(client->msg.size > (client->restLen + len - msgOffset))
+    {
+        useMsg = 1;
+        goto RESTMSG;
+    }
+
+    /* rest context is fullfill one entire msg. */
+    if((client->restLen - restOffset) < client->msg.size)
+    {
+        tmpLen = client->msg.size - client->restLen + restOffset;
+        if(len - msgOffset >= tmpLen)
+        {
+            memcpy(client->restMsg + client->restLen, msg + msgOffset, tmpLen);
+            client->restLen += tmpLen;
+            msgOffset += tmpLen;
+        }
+        else 
+        {
+            useMsg = 1;
+            goto RESTMSG;
+        }
+    }
+
+    /* fill entire message */
+    memcpy(client->msg.body, client->restMsg + restOffset, client->msg.size);
+    restOffset += client->msg.size;
+    client->restLen -= restOffset;
+
+RESTMSG:
+    if(useMsg)
+    {
+        /* wait context, rollback */
+        restOffset -= MSG_HEADER_LEN;
+        client->msg.type = 0;
+        client->msg.size = 0;
+    }
+
+    /* clean restmsg */
+    if((restOffset > 0) && (client->restLen > 0))
+        memcpy(client->restMsg, client->restMsg + restOffset, client->restLen);
+
+    /* save the rest msg */
+    tmpLen = len - msgOffset;
+    if(tmpLen > 0)
+    {
+        if(tmpLen > (PORT_BUFFER_SIZE - client->restLen))
+        {
+            client->clientStatus |= CS_BLOCK;            
+        }
+        else
+        {
+            client->clientStatus &= ~CS_BLOCK;
+        }
+
+        memcpy(client->restMsg + client->restLen, msg + msgOffset, tmpLen);
+        client->restLen += tmpLen;
+    }
+    return client->msg.size;
+}
+
+static int GetMsgIntValue(char *buf, int *type)
+{
+    int typelen = sizeof(int);
+    *type = *((int *) buf);
+    return typelen;
 }

@@ -17,7 +17,7 @@
 
 #include "list.h"
 #include "tables.h"
-
+#include "rwlock.h"
 
 /* 
  * filename 
@@ -34,6 +34,14 @@
 
 #define FILE_MAX_OPENED_PER_PROCESS (1000)
 
+typedef enum LockState
+{
+    LOCK_NULL,
+    LOCK_EXCLUSIVE,
+    LOCK_SHARED,
+    RELEASE_LOCK
+}LockState;
+
 typedef union FileHandle
 {
     int fd;
@@ -45,6 +53,7 @@ typedef struct VFVec
     DList list;
     int forkNum;
     PFileHandle pfh;
+    RWLockInfo lock;
 }VFVec, *PVFVec;
 
 typedef struct StorageManagerInfo
@@ -61,9 +70,10 @@ typedef struct StorageMangeContext
     int fileMaxNum;
     int fileOpenedNum;
     int vFileNum;
+    RWLockInfo lock;        /* lock protect above all. */
 }StorageMangeContext, *PStorageMangeContext;
 
-
+int InitSmgr();
 PVFVec SearchVF(PVFVec head, ForkType forknum);
 
 /* raw operations interface */
@@ -76,7 +86,6 @@ int smgr_write(PVFVec vfInfo, PPageOffset pageOffset, PPageHeader page);
 
 int smgrRelease(PsgmrInfo sgmrInfo);
 
-
-
+void LockVF(PVFVec vfInfo, LockState state);
 
 #endif 

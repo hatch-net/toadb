@@ -61,6 +61,7 @@ typedef struct HashTableInfo
     PHashElement    buckets;
     PHashElement    freeHashElementList;    
     SPINLOCK        freeListLock;
+    int             freeNum;
 
     HASHKEY partitionMask;
     HASHKEY bucketMask;
@@ -70,6 +71,7 @@ typedef struct HashTableInfo
 
     PHashSegment        segmentArray;
     PMemContextNode     hashMemContext;
+    int                 usedNum;
 
     HashKeyFun          getHashKey;
     HashCompareFun      hashCompare;
@@ -91,7 +93,9 @@ PHashElement DeleteHashEntryFromBucket(PHashTableInfo hashTableInfo, PHashElemen
 PHashElement GetHashEntryFromBucket(PHashTableInfo hashTableInfo, PHashElement bucket, HASHKEY key, char *value);
 
 PHashElement HashFindEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value, int partition);
-PHashElement HashGetFreeEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value);
+PHashElement HashGetFreeEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value, int *flag);
 int HashDeleteEntry(PHashTableInfo hashTableInfo, HASHKEY key, char *value);
 
+typedef struct BufferPoolContext *PBufferPoolContext;
+void ShowHashTableValues(PHashTableInfo hashTableInfo, PBufferPoolContext bufferPool);
 #endif 

@@ -9,7 +9,7 @@
 #include "queryNode.h"
 #include "exectable.h"
 
-#define hat_log printf
+
 
 void ExecutorUtility(PPlan plan, PPortal portal)
 {

@@ -131,7 +131,7 @@ typedef struct PageDataHeader
     PageHeader header;
     int dataOffset;     /* offset from this structure. */
     int dataEndOffset;  /* the same above */
-    int pageCnt;        /* only head page record */
+    unsigned int pageCnt;        /* only head page record */
     PageOffset undoPage;    /* undo data page offset */
     PageOffset extPage;     /* extension data page offset */
     ItemData item[FLEXIBLE_SIZE];

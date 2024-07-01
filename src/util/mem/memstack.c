@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// #define hat_debug printf 
+#define hat_debug_memstack(...) 
 
 /* 
  * 内存上下文的列表，总的内存上下文由g_MemList记录，
@@ -293,13 +293,13 @@ PMemContextNode MemMangerNewContext(char *contextName)
     PMemContextNode MainContext = NewMMContext(contextName);
     PDList head = &(g_CurrentContext->subList);
 
-    hat_log("1currentContext:%p.", g_CurrentContext);
+    hat_debug_memstack("1currentContext:%p.", g_CurrentContext);
 
     /* MainContext->memList link to parent. */
     AddDListTail(&head, (PDList)MainContext);
 
     g_CurrentContext = MainContext;
-    hat_log("2currentContext:%p.", g_CurrentContext);
+    hat_debug_memstack("2currentContext:%p.", g_CurrentContext);
 #ifdef MEM_MANAGER_VALID_CHECK    
     MemValidCheck();
 #endif 
@@ -381,7 +381,7 @@ static void MemDestroyContextNode(PMemContextNode context)
         }
     }
 
-    hat_debug1("destroyContext %s addr:%p ", context->contextName, context);
+    hat_debug_memstack("destroyContext %s addr:%p ", context->contextName, context);
 
     ReleaseMemContext((PMemPoolContextInfo)context);
 }
@@ -482,14 +482,14 @@ static void MemValidCheckContextNode(PMemContextNode context)
         }
     }
 
-    hat_debug1("Memory context[%s] ,address %p", context->contextName, context);
+    hat_debug_memstack("Memory context[%s] ,address %p", context->contextName, context);
 }
 
 static void MemValidCheckMemNode(PMemNode node)
 {
     char *ptr = NULL;
 
-    hat_debug1("Memory Node[%p] , value address[%p] size[%d]", node, node->ptr, node->memSize);
+    hat_debug_memstack("Memory Node[%p] , value address[%p] size[%d]", node, node->ptr, node->memSize);
 
     // ptr = (char *)node;
     // MemValidCheckBlock((ptr), node->memSize);

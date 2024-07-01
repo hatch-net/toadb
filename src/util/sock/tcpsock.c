@@ -21,7 +21,7 @@
 #include <arpa/inet.h>	//inet_addr
 #include <unistd.h>     // close
 #include <errno.h>
-
+#include <string.h>
 #include <sys/epoll.h> 
 
 int CreateTcpSocket()
@@ -126,7 +126,8 @@ int ReadData(int sockfd, char *buf, int bufLen)
     ret = recv(sockfd, buf, bufLen, 0);
     if(ret <= 0)
     {
-        hat_error("send tcp socket error[%d]", errno);
+        hat_error("%d recv tcp socket error[%d]", ret, errno);
+        ret = -1;
     }
     return ret;
 }
@@ -134,14 +135,33 @@ int ReadData(int sockfd, char *buf, int bufLen)
 int WriteData(int sockfd, char *buf, int bufLen)
 {
     int ret = 0;
+    int offset = 0;
+
     if((sockfd < 0) || (NULL == buf))
         return -1;
-    
-    ret = send(sockfd, buf, bufLen, 0);
-    if(ret <= 0)
+RETSEND:    
+    hat_debug("bufLen %d offset %d send tcp socket, buftype[%0x-%0x-%0x-%0x] buflen[%0x-%0x-%0x-%0x]", 
+                bufLen, offset,
+                buf[0],buf[1],buf[2],buf[3],
+                buf[4],buf[5],buf[6],buf[7]);
+
+    ret = send(sockfd, buf + offset, bufLen, 0);
+    if(ret < 0)
     {
-        hat_error("send tcp socket error[%d]", errno);
+        hat_error("%d send tcp socket error[%d]", ret, errno);
+        if(errno == EINTR)
+            goto RETSEND;
+            
+        return -1;
     }
+
+    if(ret != bufLen)
+    {
+        offset += ret;
+        bufLen -= ret;
+        goto RETSEND;
+    }
+
     return ret;
 }
 
@@ -157,7 +177,7 @@ int ConnectTcpServer(int fd, int port, char *addr)
 {
     struct sockaddr_in serv_addr;  
 
-    bzero((char *) &serv_addr, sizeof(serv_addr));  
+    bzero(&serv_addr, sizeof(serv_addr));  
 
     serv_addr.sin_family = AF_INET;  
     serv_addr.sin_addr.s_addr = inet_addr(addr);
@@ -223,28 +243,37 @@ int EpollProcess(PTCPContext context, struct epoll_event *events, int maxEvent, 
     {  
         if (errno == EINTR) {  
             return 1;  
-        }  
+        } 
+        
+        hat_error("%d epll wait tcp socket error[%d]", nfds, errno);
+        return nfds; 
     }  
   
     /* 处理所有接收到的事件   */
     for (n = 0; n < nfds; ++n) 
     {  
-        if(events[n].events & EPOLLIN) 
+        if((events[n].events) & EPOLLIN) 
         {  
-            ret = ReadData(events[n].data.fd, buffer, SOCKET_BUFFER_LEN);
-            epInfo->len = ret;
-            epInfo->buffer = buffer;
+            if(0 == (epInfo->message & TS_BLOCK_READ))
+            {
+                ret = ReadData(events[n].data.fd, buffer, SOCKET_BUFFER_LEN);
+                epInfo->len = ret;
+                epInfo->buffer = buffer;
+            }
 
             if(context->readProc != NULL)
-                ret = context->readProc(epInfo);
+                ret = context->readProc(epInfo, context->msgProc);
         }  
         
-        if(events[n].events & EPOLLOUT) 
+        if(events[n].events & EPOLLOUT)
         {  
-            ret = WriteData(events[n].data.fd, epInfo->buffer, epInfo->len);
+            if(0 == (epInfo->message & TS_BLOCK_WRITE))
+            {
+                ret = WriteData(events[n].data.fd, epInfo->buffer, epInfo->len);
+            }
 
             if(context->writeProc != NULL)
-                ret = context->writeProc(epInfo);
+                ret = context->writeProc(epInfo, NULL);
         }  
     }
 

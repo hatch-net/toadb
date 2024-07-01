@@ -18,8 +18,6 @@
 #include "queryNode.h"
 #include "planNode.h"
 
-#define hat_log printf
-#define debug 
 
 
 /* static function declare */

@@ -25,6 +25,7 @@
 #include "memStack.h"
 #include "resourceMgr.h"
 #include "hashtab.h"
+#include "atom.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,9 @@
 // #define hat_bufcontext_debug(...)  log_report(LOG_DEBUG, __VA_ARGS__)
 #define hat_bufcontext_debug(...)
 
+//#define hat_buflock_debug(...) log_report(LOG_DEBUG, __VA_ARGS__) 
+#define hat_buflock_debug(...)
+
 /* 内存缓冲区 */
 PBufferPoolContext g_bufferPoolContext = NULL;
 
@@ -48,7 +52,7 @@ static PBufferPoolContext GetBufferPoolContext();
 
 static PBufferElement AllocBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag, int *found);
 static BUFFERID SearchBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag);
-static int CleanPageBuffer(PPageDataHeader page, BUFFERID bufferId, int isDirty) ;
+static int CleanPageBuffer(PPageDataHeader page, BUFFERID bufferId, PBufferDesc bufDesc) ;
 
 int CreateBufferPool(int pageNum)
 {
@@ -332,7 +336,7 @@ PPageDataHeader GetSpacePage(PTableList tblInfo, int size, PageOp op, ForkType f
     if (size + PAGE_DATA_HEADER_SIZE >= PAGE_MAX_SIZE)
     {
         hat_log("row data size %d is oversize page size %d", size, PAGE_MAX_SIZE);
-        return page;
+        return NULL;
     }
 
     /* sesearch all table file ,from current page. */
@@ -342,11 +346,14 @@ PPageDataHeader GetSpacePage(PTableList tblInfo, int size, PageOp op, ForkType f
         if (NULL == page)
             break;
 
+        LockPage(page, BUF_READ);
         /* freespace check */
         if (HasFreeSpace(page, size))
         {
+            UnLockPage(page, BUF_READ);
             break;
         }
+        UnLockPage(page, BUF_READ);
 
         /* todo: bufferpool */
         ReleasePage(page);
@@ -386,10 +393,27 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         if (NULL == page)
             break;
 
+        LockPage(page, BUF_READ);
+
+        /* first page is original data type. */
+        if((firstpage == NULL) && (PAGE_UNDO == pageType))
+        {
+            firstpage = page;
+            startPageIndex = page->undoPage.pageno;
+            continue;
+        }
+
         if (GET_PAGE_TYPE(page->header.pageType) != pageType)
         {
             /* todo: bufferpool */
+            UnLockPage(page, BUF_READ);
             ReleasePage(page);
+            
+            if(NULL != firstpage)
+            {
+                UnLockPage(firstpage, BUF_READ);
+                ReleasePage(firstpage);
+            }
 
             hat_error("found error page, page num:%d type:%d ,request type:%d ",
                       page->header.pageNum,
@@ -401,6 +425,12 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         /* freespace check */
         if (HasFreeSpace(page, size))
         {
+            UnLockPage(page, BUF_READ);
+            if(NULL != firstpage)
+            {
+                UnLockPage(firstpage, BUF_READ);
+                ReleasePage(firstpage);
+            }
             return page;
         }
 
@@ -417,10 +447,15 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         }
         else 
         {
-            /* here , follow code will be excutor. */
+            /* 
+             * here , follow code will be excutor. 
+             * head of extension page chain have free space, 
+             * accordingly, other extension page don't need check.
+            */
             pageIndex++;
         }
 
+        /* TODO: first page will locked until ext/undo ended of adding. */
         if (NULL == firstpage)
         {
             firstpage = page;
@@ -428,7 +463,11 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         else
         {
             /* first page is not release, which is updated when extension new page. */
-            ReleasePage(page);
+            if(page != firstpage)
+            {
+                UnLockPage(page, BUF_READ);
+                ReleasePage(page);
+            }
         }
 
         /* next page search once more. */
@@ -443,18 +482,31 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
      */
     if ((op == PAGE_NEW) && (NULL == extpage))
     {
+        StartExtensionTbl(tblInfo);
+
         extpage = ExtensionTbl(tblInfo, 1, forkNum);
         if(NULL == extpage)
         {
+            EndExtensionTbl(tblInfo);
             return NULL;
         }
 
+        LockPage(extpage, BUF_WRITE);
         extpage->header.pageType = SET_PAGE_TYPE(extpage->header.pageType, pageType);
+        UnLockPage(extpage, BUF_WRITE);
     }
 
 EXT_NEW:
     if ((firstpage != NULL) && (extpage != NULL))
-    {
+    {        
+        UnLockPage(firstpage, BUF_READ);
+
+        /* page is locked in order that avoid to dead lock.  */
+        LockPage(firstpage, BUF_WRITE);
+        LockPage(extpage, BUF_WRITE);
+
+        extpage->header.pageType = SET_PAGE_TYPE(extpage->header.pageType, pageType);
+
         /* 指定块没有空间时，扩展一个块, 这里使用头插法。  */
         if (PAGE_EXTDATA == pageType)
         {
@@ -469,9 +521,26 @@ EXT_NEW:
 
         /* todo, maybe set dirty flag only. */
         WritePage(tblInfo, firstpage, forkNum);
+        
+        UnLockPage(extpage, BUF_WRITE);
+        UnLockPage(firstpage, BUF_WRITE);
+
+        EndExtensionTbl(tblInfo);
+        
+        /* pre block of chain. */
+        ReleasePage(firstpage);
+    }
+    else if(firstpage != NULL)
+    {
+        UnLockPage(firstpage, BUF_READ);
 
         /* pre block of chain. */
         ReleasePage(firstpage);
+    }
+    else 
+    {
+        /* nothing */
+        ;
     }
 
     return extpage;
@@ -517,6 +586,7 @@ int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row)
     int writeSize = 0;
     int size = 0;
 
+    LockPage(page, BUF_WRITE);
     /* first rowdata insert into page buffer */
     newRowBuffer = (char *)page + page->dataEndOffset;
 
@@ -537,23 +607,61 @@ int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row)
 
     /* page buffer write to table file. */
     WritePage(tblInfo, page, MAIN_FORK);
+    UnLockPage(page, BUF_WRITE);
 
     /* end resource release here. */
     FreeMem(row);
-    ReleasePage(page);
+
     return 0;
 }
 
-/*
- * format of row data in the page
- * two part : item and data;
- * first part item: dataOffset -> ItemData
- * seconde part data:  dataEndOffset -> TableRowData
- *
- * |tablerowDataHead|column                               |..|           column|
- * | RowData | total size, num | column total size, attr index, data |..| ..              |
- */
-int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row)
+static int LockGroupPages(PScanPageInfo scanPageInfo, int num)
+{
+    int ColNum = 0;
+    PPageDataHeader *pageList = NULL;
+
+    pageList = scanPageInfo->pageList;
+    for(ColNum = 0; ColNum < num; ColNum++)
+    {
+        LockPage(pageList[ColNum], BUF_WRITE);
+    }
+    return 0;
+}
+
+static int UnLockGroupPages(PScanPageInfo scanPageInfo, int num)
+{
+    int ColNum = 0;
+    PPageDataHeader *pageList = NULL;
+
+    pageList = scanPageInfo->pageList;
+    for(ColNum = 0; ColNum < num; ColNum++)
+    {
+        UnLockPage(pageList[ColNum], BUF_WRITE);
+    }
+    return 0;
+}
+
+static int FreeSpaceCheck(PScanPageInfo scanPageInfo, PTableRowData insertdata)
+{
+    int columnRowSize = 0;
+    int columnRowHeaderSize = sizeof(TableRowData) + sizeof(ItemData);
+    int ColNum = 0;
+    PPageDataHeader *pageList = NULL;
+
+    pageList = scanPageInfo->pageList;
+    for(ColNum = 0; ColNum < insertdata->num; ColNum++)
+    {
+        columnRowSize = insertdata->columnData[ColNum]->size + columnRowHeaderSize;
+        if (!HasFreeSpace(pageList[ColNum], columnRowSize))
+        {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int WriteRowOnePage(PTableList tblInfo, PPageDataHeader page, PRowData row)
 {
     int ret = 0;
 
@@ -571,6 +679,63 @@ int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowDat
 
     row->rowPos.itemIndex = GET_ITEM_INDEX(page) - 1;
     row->rowPos.pageIndex.pageno = page->header.pageNum;
+
+    return ret;
+}
+
+int InsertRowDataWithGroup(PTableList tblInfo, PTableRowData insertdata, PScanPageInfo scanPageInfo)
+{
+    PPageDataHeader *pageList = NULL;
+    PRowData rowData = NULL;
+    int ColNum = 0;
+    int ret = 0;
+
+    pageList = scanPageInfo->pageList;
+    rowData = scanPageInfo->rowData;
+
+    /* lock group pages */
+    LockGroupPages(scanPageInfo, insertdata->num);
+
+    /* recheck free space */
+    ret = FreeSpaceCheck(scanPageInfo, insertdata);
+    if(ret < 0)
+    {
+        ret = ESTAT_NO_SPACE;
+        goto ENERET;
+    }
+
+    /* insert rows into pages. */
+    rowData->rowsData.num = 1;
+    for(ColNum = 0; ColNum < insertdata->num; ColNum++)
+    {
+        rowData->rowsData.columnData[0] = insertdata->columnData[ColNum];
+        rowData->rowsData.size = insertdata->columnData[ColNum]->size;
+
+        ret = WriteRowOnePage(tblInfo, pageList[ColNum], rowData);
+    }
+
+    ret = ESTAT_SUCESS;
+ENERET:
+    UnLockGroupPages(scanPageInfo, insertdata->num);
+    return ret;
+}
+
+/*
+ * format of row data in the page
+ * two part : item and data;
+ * first part item: dataOffset -> ItemData
+ * seconde part data:  dataEndOffset -> TableRowData
+ *
+ * |tablerowDataHead|column                               |..|           column|
+ * | RowData | total size, num | column total size, attr index, data |..| ..              |
+ */
+int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row)
+{
+    int ret = 0;
+
+    LockPage(page, BUF_WRITE);
+    ret = WriteRowOnePage(tblInfo, page, row);
+    UnLockPage(page, BUF_WRITE);
 
     return ret;
 }
@@ -597,18 +762,14 @@ int WriteRowDataOnly(PTableList tblInfo, PPageDataHeader page, PRowData row, PIt
 {
     int ret = 0;
 
+    LockPage(page, BUF_WRITE);
     ret = ReplaceRowData(page, row, oldItem);
 
     /* page buffer write to table file. */
     WritePage(tblInfo, page, MAIN_FORK);
+    UnLockPage(page, BUF_WRITE);
 
     return ret;
-}
-
-int CloseTable(PTableList tbl)
-{
-    FreeMem(tbl);
-    return 0;
 }
 
 int InitPage(char *page, int flag)
@@ -655,19 +816,15 @@ PPageDataHeader ExtensionTbl(PTableList tblInfo, int num, ForkType forkNum)
         break;
     }
 
-    /* blank space page write to the end of tblfile. */
-    // page = (char *)AllocMem(PAGE_MAX_SIZE);
-
     (void)InitPage(page, PAGE_DATA);
     pageNew = (PPageDataHeader)page;
 
     for (; i < num; i++)
     {
-        pageNew->header.pageNum = pageHeader->pageCnt + 1;
+        pageNew->header.pageNum = atomic_fetch_add(&pageHeader->pageCnt, 1) + 1;
 
         /* low level write to file */
         ret = TableWrite(tblInfo, (PPageHeader)pageNew, forkNum);
-        pageHeader->pageCnt += 1;
     }
 
     /* write to header page */
@@ -686,6 +843,8 @@ int UpdateMetaData(PTableList tblInfo, ForkType forkNum)
     /* read full page */
     page = GetPageByIndex(tblInfo, PAGE_HEAD_PAGE_NUM, forkNum);
 
+    LockPage(page, BUF_WRITE);
+
     /* update buffer */
     switch (forkNum)
     {
@@ -701,7 +860,8 @@ int UpdateMetaData(PTableList tblInfo, ForkType forkNum)
 
     /* write header page */
     WritePage(tblInfo, page, forkNum);
-
+    
+    UnLockPage(page, BUF_WRITE);
     ReleasePage(page);
     return 0;
 }
@@ -728,27 +888,83 @@ int UpdateTableMetaData(PTableList tblInfo, PPageDataHeader page)
  *      2, free buffer is returned, and tag was assigned;
  *      3, the buffer which is returned is dirty buffer, which will be flushed at the first,
  *          then assigned tag.
+ *      4, when tag_valid, buffer is locked until setting valid tag .
  *      all of above, refcnt is added, releasebuffer to minus.
  */
 static PBufferElement AllocBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag, int *found)
 {
     BUFFERID bufferId = 0;
     PBufferElement pElemnt = NULL;
+    PHashElement hashEntry = NULL;
     HASHKEY key = 0;
     BufferPoolHashValue hashValue;
-    
+    PBufferPoolHashValue entryValue = NULL;
+    int ret = 0;
+
+REFIND:
     /* search buffer pool */
     bufferId = SearchBuffer(bufferPool, bufferTag);
+FIND_RECHECK:            
     if(INVLID_BUFFER != bufferId)
     {
-        *found = BUFFER_FOUND;
-        goto RET_BUF;
+        LockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
+        PinBuffer(bufferPool, bufferId);
+
+        /*
+         *  recheck tag and isvalid. 
+         *  before lock and pin, this buffer may be sweep out by other worker.
+         */
+        if((bufferTag->databaseId == bufferPool->bufferDesc[bufferId].bufferTag.databaseId) 
+                && (bufferTag->tableId == bufferPool->bufferDesc[bufferId].bufferTag.tableId) 
+                && (bufferTag->segno == bufferPool->bufferDesc[bufferId].bufferTag.segno) 
+                && (bufferTag->pageno == bufferPool->bufferDesc[bufferId].bufferTag.pageno) 
+                && (bufferTag->forkNum == bufferPool->bufferDesc[bufferId].bufferTag.forkNum))
+        {
+            /*
+            * invalid -- del, refind
+            * valid  -- normal
+            * tag_valid -- loading
+            */
+            if(bufferPool->bufferDesc[bufferId].isValid != BVF_INVALID)
+            {
+                if(bufferPool->bufferDesc[bufferId].isValid == BVF_TAG)
+                {
+                    hat_bufpool_debug("empty1 page:%p, bufid:%d tag(%d-%d-%d) desc(%d-%d-%d)", 
+                        &(bufferPool->bufferPool[bufferId]), bufferId, 
+                        bufferTag->tableId, bufferTag->pageno, bufferTag->forkNum, 
+                        bufferPool->bufferDesc[bufferId].isValid, bufferPool->bufferDesc[bufferId].refCnt, bufferPool->bufferDesc[bufferId].usedCnt);
+
+                    /* 
+                    * other is loading, we must wait a lot, or we loading it. 
+                    * locking until setting valid.
+                    */
+                    *found = BUFFER_EMPTY;
+                }
+                else 
+                {
+                    hat_bufpool_debug("found page:%p, bufid:%d tag(%d-%d-%d) desc(%d-%d-%d)", 
+                        &(bufferPool->bufferPool[bufferId]), bufferId, 
+                        bufferTag->tableId, bufferTag->pageno, bufferTag->forkNum, 
+                        bufferPool->bufferDesc[bufferId].isValid, bufferPool->bufferDesc[bufferId].refCnt, bufferPool->bufferDesc[bufferId].usedCnt);
+
+                    *found = BUFFER_FOUND;
+                    UnLockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
+                }
+
+                goto RET_BUF;
+            }
+        }          
+
+        /* invalid, this buffer is sweeping out. */
+        unPinBuffer(bufferPool, bufferId);
+        UnLockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
     }
     
     /* find free list */
     bufferId = GetFreeBufferId(bufferPool);
     if(INVLID_BUFFER != bufferId)
     {
+        LockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
         PinBuffer(bufferPool, bufferId);
 
         *found = BUFFER_EMPTY;
@@ -765,10 +981,11 @@ static PBufferElement AllocBuffer(PBufferPoolContext bufferPool, PBufferTag buff
     /* swap one buffer */
     if(INVLID_BUFFER != bufferId)
     {
+        /* loading process protected by the lock, other will wait lock release. */
         PinBuffer(bufferPool, bufferId);
 
         /* flush ,  oldtag was deleted from hashtable*/
-        CleanPageBuffer((PPageDataHeader)&(bufferPool->bufferPool[bufferId]), bufferId, bufferPool->bufferDesc[bufferId].isDirty);
+        CleanPageBuffer((PPageDataHeader)&(bufferPool->bufferPool[bufferId]), bufferId, &bufferPool->bufferDesc[bufferId]);
 
         /* init tag */
         *found = BUFFER_EMPTY;
@@ -779,16 +996,64 @@ static PBufferElement AllocBuffer(PBufferPoolContext bufferPool, PBufferTag buff
         return NULL;
     }
 
+    hat_bufpool_debug("empty page:%p, bufid:%d tag(%d-%d-%d) desc(%d-%d-%d)", 
+                &(bufferPool->bufferPool[bufferId]), bufferId, 
+                bufferTag->tableId, bufferTag->pageno, bufferTag->forkNum, 
+                bufferPool->bufferDesc[bufferId].isValid, bufferPool->bufferDesc[bufferId].refCnt, bufferPool->bufferDesc[bufferId].usedCnt);
 INIT_TAG:
-    memcpy(&(bufferPool->bufferDesc[bufferId].bufferTag), bufferTag, sizeof(BufferTag));
-    bufferPool->bufferDesc[bufferId].isValid = BVF_TAG;
-    bufferPool->bufferDesc[bufferId].isDirty = BUFFER_CLEAN;
+    
+    /* recheck */
+    if(BVF_INVALID == bufferPool->bufferDesc[bufferId].isValid)
+        bufferPool->bufferDesc[bufferId].isValid = BVF_TAG;
+    else
+    {
+        /* this buffer is used by other worker, we find again. */
+        unPinBuffer(bufferPool, bufferId);
+        UnLockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
+        goto REFIND;
+    }
 
+    memcpy(&(bufferPool->bufferDesc[bufferId].bufferTag), bufferTag, sizeof(BufferTag));
+    bufferPool->bufferDesc[bufferId].isDirty = BUFFER_CLEAN;
+    
     /* new buffer tag, which will add to hashtable. */
     hashValue.bufferId = bufferId;
     hashValue.tag = *bufferTag;
     key = g_bufferHashTable->getHashKey((char*)bufferTag, sizeof(BufferTag));
-    HashGetFreeEntry(g_bufferHashTable, key, (char*)&hashValue);
+
+    /* must be enough. */
+    hashEntry = HashGetFreeEntry(g_bufferHashTable, key, (char*)&hashValue, &ret);
+    if(NULL == hashEntry)
+    {
+        unPinBuffer(bufferPool, bufferId);
+        UnLockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
+
+        ShowHashTableValues(g_bufferHashTable, bufferPool);
+        
+        goto REFIND;
+    }
+
+    if(HASH_FIND == ret)
+    {
+        /* 
+         * this tag has inserted by other worker,
+         * thus the empty buffer release currently, and pin/lock new buffer.
+        */
+        unPinBuffer(bufferPool, bufferId);
+        UnLockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
+
+        entryValue = GetEntryValue(hashEntry);
+        bufferId = entryValue->bufferId;
+
+        hat_bufpool_debug("insert(find) hash entry:%p bufid:%d tag(%d-%d-%d)", 
+                hashEntry, bufferId, bufferTag->tableId, bufferTag->pageno, bufferTag->forkNum);
+
+        /* recheck */
+        goto FIND_RECHECK;
+    }
+
+    hat_bufpool_debug("insert hash entry:%p bufid:%d tag(%d-%d-%d)", 
+                hashEntry, bufferId, bufferTag->tableId, bufferTag->pageno, bufferTag->forkNum);
 
 RET_BUF:
     pElemnt = &(bufferPool->bufferPool[bufferId]);
@@ -818,13 +1083,10 @@ static BUFFERID SearchBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag
     value = (PBufferPoolHashValue)GetEntryValue(entry);
     id = value->bufferId;
 
-    PinBuffer(bufferPool, id);
-
-    /* pinBuffer must be ahead of unlock */
     HashLockPartitionRelease(g_bufferHashTable, partition);
 
-    hat_bufpool_debug("SearchBuffer tableId:%d pagenum:(%d-%d-%d) hitbuffer:%d", 
-                    bufferTag->tableId, bufferTag->segno, bufferTag->pageno, bufferTag->forkNum, id);
+    hat_bufpool_debug("SearchBuffer tableId:%d pagenum:(%d-%d-%d) hitbuffer:%d key:%0x partition:%d", 
+                    bufferTag->tableId, bufferTag->segno, bufferTag->pageno, bufferTag->forkNum, id, key, partition);
 
     return id;
 }
@@ -832,13 +1094,14 @@ static BUFFERID SearchBuffer(PBufferPoolContext bufferPool, PBufferTag bufferTag
 /* 
  * flush , oldtag was deleted from hashtable
  */
-static int CleanPageBuffer(PPageDataHeader page, BUFFERID bufferId, int isDirty) 
+static int CleanPageBuffer(PPageDataHeader page, BUFFERID bufferId, PBufferDesc bufDesc) 
 {
     PBufferTag otherBufferTag = NULL;
     Relation otherRelation = {0};
     PTableList otherTblInfo = NULL;
     HASHKEY key = 0;
     BufferPoolHashValue hashValue;
+    int ret = 0;
 
     otherBufferTag = GetBufferTag(GetBufferPoolContext(), (PBufferElement)page);
 
@@ -847,19 +1110,26 @@ static int CleanPageBuffer(PPageDataHeader page, BUFFERID bufferId, int isDirty)
     otherRelation.relType = 0;
 
     /* flush this buffer */
-    if(BUFFER_DITRY == isDirty) 
+    if(BUFFER_DITRY == bufDesc->isDirty) 
     {
         otherTblInfo = GetTableInfoByRel(&otherRelation);
         FlushPage(otherTblInfo, page, otherBufferTag->forkNum);
     }
+    
+    /* INVALID TAG */
+    bufDesc->isValid = BVF_INVALID;
+    hat_bufpool_debug("CleanPageBuffer page:%p, tag(%d-%d-%d) bufferId:%d desc(%d-%d-%d)", 
+                page, otherBufferTag->tableId, otherBufferTag->pageno, otherBufferTag->forkNum, 
+                bufferId,
+                bufDesc->isValid, bufDesc->refCnt, bufDesc->usedCnt);
 
     /*delete from hashtable */
     hashValue.tag = *otherBufferTag;
     hashValue.bufferId = bufferId;
     key = g_bufferHashTable->getHashKey((char *)otherBufferTag, sizeof(BufferTag));
-    HashDeleteEntry(g_bufferHashTable, key, (char *)&hashValue);
-
-    return 0;
+    ret = HashDeleteEntry(g_bufferHashTable, key, (char *)&hashValue);
+        
+    return ret;
 }
 
 /*
@@ -873,6 +1143,7 @@ PPageDataHeader ReadPage(PTableList tblInfo, int index, ForkType forkNum)
     PPageDataHeader page = NULL;
     PageOffset pageoffset;
     BufferTag bufferTag;
+    PBufferDesc desc = NULL;
 
     int found = 0;
     int ret = 0;
@@ -891,19 +1162,44 @@ PPageDataHeader ReadPage(PTableList tblInfo, int index, ForkType forkNum)
     bufferTag.forkNum = forkNum;
 
     page = (PPageDataHeader)AllocBuffer(GetBufferPoolContext(), &bufferTag, &found);
-    if (BUFFER_FOUND == found)
+    if ((BUFFER_FOUND == found) || (NULL == page))
     {
+        /* debug check . */
+        if((NULL != page) && (page->header.pageNum != bufferTag.pageno))
+        {
+            desc = GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page);
+            hat_error("find bad page %p, pagenum:%d, reqnum:%d forknum:%d tbl:%s  desc(%d-%d-%d)", 
+                page, page->header.pageNum, bufferTag.pageno, forkNum, tblInfo->tableDef->tableName, 
+                desc->isValid, desc->refCnt, desc->usedCnt);
+        }
         return page;
     }
 
     ret = TableRead(tblInfo, &pageoffset, forkNum, (char *)page);
     if (ret < 0)
     {
+        desc = GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page);
+        hat_bufpool_debug("page:%p read failure, tag(%d-%d-%d) desc(%d-%d-%d)", 
+                page, bufferTag.tableId, bufferTag.pageno, bufferTag.forkNum, desc->isValid, desc->refCnt, desc->usedCnt);
+        
         ReleaseBuffer(GetBufferPoolContext(), (PBufferElement)page);
+        UnLockPage(page, BUF_WRITE);
         return NULL;
     }
 
+    hat_bufpool_debug("page:%p readed, tag(%d-%d-%d)", 
+                page, bufferTag.tableId, bufferTag.pageno, bufferTag.forkNum);
+
+    /* debug check. */
+    if(page->header.pageNum != bufferTag.pageno)
+    {
+        hat_error("find2 bad page %p, pagenum:%d, reqnum:%d forknum:%d tbl:%s", 
+                page, page->header.pageNum, bufferTag.pageno, forkNum, tblInfo->tableDef->tableName);
+    }
+
     SetBuffferValid(GetBufferPoolContext(), (PBufferElement)page, BVF_VLID);
+    UnLockPage(page, BUF_WRITE);
+
     return page;
 }
 
@@ -912,7 +1208,9 @@ int ReleasePage(PPageDataHeader page)
     if (NULL == page)
         return -1;
 
+    LockBufDesc(GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page), BUF_WRITE);
     ReleaseBuffer(GetBufferPoolContext(), (PBufferElement)page);
+    UnLockBufDesc(GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page), BUF_WRITE);
 
     ReleaseResourceOwner(page, 1);
 
@@ -941,76 +1239,6 @@ int FlushPage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum)
     return ret;
 }
 
-#if 0
-/* 
- * get group info from group file, which is same name prefix as relation file.
- * We will create group file at the first time. 
- */
-PGroupItemData FindGroupInfo(PTableList tblInfo, int groupId)
-{
-    PTableList tblGroup = NULL;
-    char groupFileName[FILE_NAME_MAX_LEN] = {0};
-    PPageDataHeader page = NULL;
-    PGroupItem gItem = NULL;
-    PGroupItemData gItemData = NULL;
-    PageOffset pageNum = {0,0};
-    int ret = 0;
-
-    if(NULL == tblInfo || groupId == INVALID_GROUP_ID)
-    {
-        hat_log("invalid parameters ");
-        return NULL;
-    }
-
-    /* init group file */
-    if(NULL == tblInfo->groupInfo)
-    {
-        hat_log("groupInfo invalid ");
-        return NULL;
-    }
-
-    /* find group info, item scan from page  */
-    pageNum.pageno = PAGE_HEAD_PAGE_NUM + 1;
-
-    page = GetPageByIndex(tblInfo, pageNum.pageno, GROUP_FORK);
-    while (page != NULL)
-    {
-        if(NULL == gItem)
-            gItem = (PGroupItem)page->item;
-        
-        /* next page */
-        if(ITEM_END_CHECK(gItem, page))
-        {
-            FreeMem(page);
-
-            pageNum.pageno ++;
-            page = GetPageByIndex(tblInfo, pageNum.pageno, GROUP_FORK);
-
-            gItem = NULL;            
-            continue;
-        }
-
-        if(GetItemValid(gItem->len) && (groupId == gItem->groupid))
-        {
-            gItemData = (PGroupItemData)AllocMem(sizeof(GroupItemData) + GetItemSize(gItem->len));
-
-            /* item infomation */
-            memcpy(&(gItemData->ItemData), gItem, sizeof(GroupItem));
-
-            /* member page infomation */
-            memcpy(gItemData->memberData, (char*)page + gItem->offset, GetItemSize(gItem->len));
-
-            gItemData->pagePos.pageno = page->header.pageNum;
-            return gItemData;
-        }
-
-        /* next item */
-        gItem += 1;
-    }
-    
-    return NULL;
-}
-#endif
 
 /*
  * get group info from group file, which is same name prefix as relation file.
@@ -1042,9 +1270,15 @@ int GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo, PGroupItemData 
 
         page = GetPageByIndex(tblInfo, pageNum.pageno, GROUP_FORK);
         searchInfo->page = page;
+        if(NULL == page)
+            return -1;
+
+        LockPage(page, BUF_READ);
     }
     else
     {
+        LockPage(page, BUF_READ);
+
         /* get next group item */
         gItem = (PGroupItem)GET_ITEM(searchInfo->item_offset, page);
         gItem += 1;
@@ -1064,13 +1298,18 @@ int GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo, PGroupItemData 
         {
             pageNum.pageno = searchInfo->pageNum + 1;
             gItem = NULL;
+
+            UnLockPage(page, BUF_READ);
             ReleasePage(page);
 
             page = GetPageByIndex(tblInfo, pageNum.pageno, GROUP_FORK);
             searchInfo->page = page;
 
             if (NULL != page)
+            {
                 searchInfo->pageNum = pageNum.pageno;
+                LockPage(page, BUF_READ);
+            }
             continue;
         }
 
@@ -1097,6 +1336,9 @@ int GetGroupInfo(PTableList tblInfo, PSearchPageInfo searchInfo, PGroupItemData 
         /* next item */
         gItem += 1;
     }
+
+    if(page != NULL)
+        UnLockPage(page, BUF_READ);
 
     return found;
 }
@@ -1238,15 +1480,18 @@ PPageDataHeader GetFreeSpaceMemberPage(PTableList tblInfo, int size, PGroupItemD
         if (NULL == page)
         {
             /* error ocur */
-            hat_error("It isn't found group member pageindex: %d", pageIndex);
+            hat_error("It isn't found group member pageindex: %d, MAIN_FORK, tblName:%s", pageIndex, tblInfo->tableDef->tableName);
             break;
         }
 
+        LockPage(page, BUF_READ);
         if (HasFreeSpace(page, size))
         {
+            UnLockPage(page, BUF_READ);
             /* Enough space is found. */
             break;
         }
+        UnLockPage(page, BUF_READ);
 
         /* todo: bufferpool */
         ReleasePage(page);
@@ -1451,36 +1696,6 @@ int GetInvlidRowCount(PPageDataHeader page)
     return rowTotal;
 }
 
-#if 0
-/* return column row array, array size is insertdata->num */
-PTableRowData FormColRowsData(PTableRowData insertdata)
-{
-    int colNum = 0;
-    PTableRowData colRows = NULL;
-    PTableRowData rawRow = NULL;
-    int itemsize = sizeof(TableRowData) + sizeof(PRowColumnData);
-
-    if (NULL == insertdata && (insertdata->num <= 0))
-    {
-        hat_log("col rows form invalid parameters. ");
-        return NULL;
-    }
-
-    colRows = (PTableRowData)AllocMem(insertdata->num * itemsize);
-
-    /* only one column data in per rowdata */
-    for (colNum = 0; colNum < insertdata->num; colNum++)
-    {
-        rawRow = (PTableRowData)((char *)colRows + colNum * itemsize);
-        rawRow->num = 1;
-
-        rawRow->columnData[0] = insertdata->columnData[colNum];
-        rawRow->size = rawRow->columnData[0]->size;
-    }
-
-    return colRows;
-}
-#endif
 
 PTableRowData FormColData2RowData(PRowColumnData colRows)
 {
@@ -1606,21 +1821,23 @@ int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num)
     int pageno = 0;
     PMemberData pmData = NULL;
 
+    LockPage(lastpage, BUF_READ);
+    pageno = lastpage->header.pageNum - num + 1;
+    UnLockPage(lastpage, BUF_READ);
+
+    if (pageno <= PAGE_HEAD_PAGE_NUM)
+    {
+        hat_log("page number is not enough. realnum:%d , request:%d ", lastpage->header.pageNum, num);
+        return -1;
+    }
+
     /* form item and data */
     size = sizeof(GroupItemData) + num * (sizeof(MemberData) + sizeof(PageOffset));
     groupItemData = (PGroupItemData)AllocMem(size);
 
-    groupItemData->ItemData.groupid = tblInfo->groupInfo->groupInfo.group_id + 1;
+    groupItemData->ItemData.groupid = atomic_fetch_add(&tblInfo->groupInfo->groupInfo.group_id, 1) + 1;
     size = num * (sizeof(MemberData) + sizeof(PageOffset));
     groupItemData->ItemData.len = size | ITEM_VALID_MASK;
-
-    pageno = lastpage->header.pageNum - num + 1;
-    if (pageno <= PAGE_HEAD_PAGE_NUM)
-    {
-        hat_log("page number is not enough. realnum:%d , request:%d ", lastpage->header.pageNum, num);
-        FreeMem(groupItemData);
-        return -1;
-    }
 
     /* member pageoffset specify */
     size = sizeof(MemberData) + sizeof(PageOffset);
@@ -1639,6 +1856,8 @@ int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num)
     size = sizeof(GroupItem) + GetItemSize(groupItemData->ItemData.len);
     page = GetSpacePage(tblInfo, size, PAGE_NEW, GROUP_FORK);
 
+    LockPage(page, BUF_WRITE);
+
     /* put data into page */
     size = GetItemSize(groupItemData->ItemData.len); /* data size */
     page->dataEndOffset -= size;
@@ -1652,12 +1871,12 @@ int InsertGroupItem(PTableList tblInfo, PPageDataHeader lastpage, int num)
     /* write to disk */
     WritePage(tblInfo, page, GROUP_FORK);
 
-    /* update metadata */
-    tblInfo->groupInfo->groupInfo.group_id++;
-    UpdateMetaData(tblInfo, GROUP_FORK);
-
+    UnLockPage(page, BUF_WRITE);
     ReleasePage(page);
     FreeMem(groupItemData);
+
+    /* update metadata */
+    UpdateMetaData(tblInfo, GROUP_FORK);
 
     return 0;
 }
@@ -1712,71 +1931,6 @@ int UpdateGroupMember(PTableList tblInfo, PPageDataHeader lastpage, int num, PGr
     return 0;
 }
 
-#if 0
-/*
- * this function will search rows in the page.
- * return rawrow when found one, next time will continue to search from next item until the end.
- */
-PTableRowData GetRowDataFromPage(PTableList tblInfo, PSearchPageInfo searchInfo)
-{
-    PPageDataHeader page = NULL;
-    PItemData Item = NULL;
-    PTableRowData rowData = NULL;
-
-    if (NULL == tblInfo || NULL == searchInfo)
-    {
-        hat_log("invalid parameters ");
-        return NULL;
-    }
-
-    page = searchInfo->page;
-    if (NULL == page)
-    {
-        return NULL;
-    }
-
-    if (searchInfo->item_offset > 0)
-    {
-        Item = (PItemData)GET_ITEM(searchInfo->item_offset, page);
-        Item += 1; // next item
-    }
-
-    if (NULL == Item)
-        Item = (PItemData)page->item;
-
-    while (!ITEM_END_CHECK(Item, page))
-    {
-        if (GetItemValid(Item->len))
-        {
-            searchInfo->item_offset = ITEM_OFFSET(Item, page);
-            searchInfo->pageNum = page->header.pageNum;
-
-            if (GetItemRedirect(Item->len))
-            {
-                rowData = GetRowDataFromExtPage(tblInfo, Item->offset, GetItemSize(Item->len));
-            }
-            else
-            {
-                /* deform row */
-                rowData = DeFormRowData(page, Item->offset);
-            }
-#ifdef SEQSCAN_STEP_ITEM_POSITION
-            hat_log("tablename:%s pagenum:%d itemindex:%d item[len:%d offset:%d flage:valid:%0x,redirect:%0x]",
-                    tblInfo->tableDef->tableName, page->header.pageNum,
-                    GET_CUR_ITEM_INDEX(Item, page), GetItemSize(Item->len), Item->offset,
-                    GetItemValid(Item->len), GetItemRedirect(Item->len));
-#endif
-            return rowData;
-        }
-
-        /* next item */
-        Item += 1;
-    }
-
-    return NULL;
-}
-
-#endif 
 
 PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchInfo)
 {
@@ -1795,6 +1949,8 @@ PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchIn
     {
         return NULL;
     }
+
+    LockPage(page, BUF_READ);
 
     if (searchInfo->item_offset > 0)
     {
@@ -1817,7 +1973,7 @@ PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchIn
             if (GetItemRedirect(Item->len))
             {
                 hat_bufcontext_debug("search item, this is redirect item.");
-                colData = GetRowDataFromExtPageEx(tblInfo, Item->offset, GetItemSize(Item->len), NULL);
+                colData = GetRowDataFromExtPageEx(page, GET_CUR_ITEM_INDEX(Item, page), NULL);
             }
             else
             {
@@ -1831,6 +1987,8 @@ PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchIn
                     GetItemValid(Item->len), GetItemRedirect(Item->len));
 #endif
             hat_bufcontext_debug("search item, found valid one.");
+
+            UnLockPage(page, BUF_READ);
             return colData;
         }
 
@@ -1841,55 +1999,22 @@ PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchIn
     }
 
     hat_bufcontext_debug("search item, but not found.");
-
+    UnLockPage(page, BUF_READ);
+    
     return NULL;
 }
 
-#if 0
+
 /*
- * row data deform from extension page.
+ * page was already locked .
  */
-PTableRowData GetRowDataFromExtPage(PTableList tblInfo, int pageno, int itemIndex)
+PRowColumnData GetRowDataFromExtPageEx(PPageDataHeader page, int itemIndex, PHeapItemData heapItemData)
 {
-    PPageDataHeader page = NULL;
-    PTableRowData rowData = NULL;
-    PItemData Item = NULL;
-
-    do
-    {
-        page = GetPageByIndex(tblInfo, pageno, MAIN_FORK);
-        if (NULL == page)
-        {
-            break;
-        }
-
-        if (GET_PAGE_TYPE(page->header.pageType) != PAGE_EXTDATA)
-        {
-            break;
-        }
-
-        Item = (PItemData)GET_ITEM_BY_INDEX(itemIndex, page);
-        if (!ITEM_END_CHECK(Item, page) && GetItemValid(Item->len))
-        {
-            rowData = DeFormRowData(page, Item->offset);
-        }
-
-        ReleasePage(page);
-    } while (0);
-
-    return rowData;
-}
-#endif 
-
-PRowColumnData GetRowDataFromExtPageEx(PTableList tblInfo, int pageno, int itemIndex, PHeapItemData heapItemData)
-{
-    PPageDataHeader page = NULL;
     PRowColumnData colData = NULL;
     PItemData Item = NULL;
 
     do
     {
-        page = GetPageByIndex(tblInfo, pageno, MAIN_FORK);
         if (NULL == page)
         {
             break;
@@ -1908,73 +2033,14 @@ PRowColumnData GetRowDataFromExtPageEx(PTableList tblInfo, int pageno, int itemI
             if (NULL != heapItemData)
             {
                 heapItemData->itemData = *Item;
-                heapItemData->pageno.pageno = pageno;
+                heapItemData->pageno.pageno = page->header.pageNum;
                 heapItemData->itemOffset = GET_ITEM_OFFSET_BY_INDEX(itemIndex);
             }
         }
-
-        ReleasePage(page);
     } while (0);
 
     return colData;
 }
-
-#if 0
-/*
- * Searching rowData, it is pecified by pageindex and rowIndex.
- */
-PTableRowData GetRowDataFromPageByIndex(PTableList tblInfo, int pageIndex, int pageOffset, PItemData itemData)
-{
-    PPageDataHeader page = NULL;
-    PItemData Item = NULL;
-    PTableRowData rowData = NULL;
-
-    if (NULL == tblInfo)
-    {
-        hat_log("invalid parameters ");
-        return NULL;
-    }
-
-    page = GetPageByIndex(tblInfo, pageIndex, MAIN_FORK);
-    if (NULL == page)
-    {
-        return NULL;
-    }
-
-    if (pageOffset > 0)
-    {
-        Item = (PItemData)GET_ITEM(pageOffset, page);
-    }
-
-    if (NULL == Item)
-    {
-        return NULL;
-    }
-
-    if (!ITEM_END_CHECK(Item, page))
-    {
-        if (GetItemValid(Item->len))
-        {
-            if (GetItemRedirect(Item->len))
-            {
-                rowData = GetRowDataFromExtPage(tblInfo, Item->offset, GetItemSize(Item->len));
-            }
-            else
-            {
-                /* deform row */
-                rowData = DeFormRowData(page, Item->offset);
-            }
-
-            if (NULL != itemData)
-                *itemData = *Item;
-        }
-    }
-
-    ReleasePage(page);
-
-    return rowData;
-}
-#endif 
 
 PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, int pageOffset, PHeapItemData heapItemData)
 {
@@ -1994,6 +2060,8 @@ PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, in
         return NULL;
     }
 
+    LockPage(page, BUF_READ);
+
     if (pageOffset > 0)
     {
         Item = (PItemData)GET_ITEM(pageOffset, page);
@@ -2001,7 +2069,7 @@ PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, in
 
     if (NULL == Item)
     {
-        return NULL;
+        goto ENDRET;
     }
 
     if (!ITEM_END_CHECK(Item, page))
@@ -2010,7 +2078,7 @@ PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, in
         {
             if (GetItemRedirect(Item->len))
             {
-                colData = GetRowDataFromExtPageEx(tblInfo, Item->offset, GetItemSize(Item->len), heapItemData);
+                colData = GetRowDataFromExtPageEx(page, GET_CUR_ITEM_INDEX(Item, page), heapItemData);
             }
             else
             {
@@ -2026,43 +2094,11 @@ PRowColumnData GetRowDataFromPageByIndexEx(PTableList tblInfo, int pageIndex, in
         }
     }
 
+ENDRET:
+    UnLockPage(page, BUF_READ);
     ReleasePage(page);
 
     return colData;
-}
-
-int GetAttrIndex(PTableList tblInfo, char *attrName)
-{
-    int index = -1; /* normal start from 0 */
-    int col = 0;
-
-    for (col = 0; col < tblInfo->tableDef->colNum; col++)
-    {
-        if (strcmp(attrName, tblInfo->tableDef->column[col].colName) == 0)
-        {
-            index = col;
-            break;
-        }
-    }
-
-    return index;
-}
-
-PColumnDefInfo GetAttrDef(PTableList tblInfo, char *attrName)
-{
-    PColumnDefInfo colDef = NULL;
-    int col = 0; /* normal start from 0 */
-
-    for (col = 0; col < tblInfo->tableDef->colNum; col++)
-    {
-        if (strcmp(attrName, tblInfo->tableDef->column[col].colName) == 0)
-        {
-            colDef = &(tblInfo->tableDef->column[col]);
-            break;
-        }
-    }
-
-    return colDef;
 }
 
 int GetGroupMemberPageNo(PMemberData memDataPos, int index)
@@ -2095,4 +2131,43 @@ int ReleaseAllResourceOwner()
     //if (count > 0)
         // hat_error("releaseAllResourceOwner Buffer, this is %d rest. ", count);
     return ret;
+}
+
+
+int LockBuffer(PPageDataHeader page, int mode)
+{
+    int ret = 0;
+    PBufferDesc desc = NULL;
+
+    if(NULL == page)
+        return -1;
+
+    desc = GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page);
+    ret = LockBufDesc(desc, (BufferLockMode)mode);
+    return ret;
+}
+
+int UnLockBuffer(PPageDataHeader page, int mode)
+{
+    int ret = 0;
+    PBufferDesc desc = NULL;
+    
+    if(NULL == page)
+        return -1;
+
+    desc = GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page);
+    ret = UnLockBufDesc(desc, (BufferLockMode)mode);
+    return ret;
+}
+
+int LockBufferEx(PPageDataHeader page, int mode, char *fun, int line)
+{
+    hat_buflock_debug("LockBufferEx page %p mode %d [%s][%d]", page, mode, fun, line);
+    return LockBuffer(page, mode);
+}
+
+int UnLockBufferEx(PPageDataHeader page, int mode, char *fun, int line)
+{
+    hat_buflock_debug("UnLockBufferEx page %p mode %d [%s][%d]", page, mode, fun, line);
+    return UnLockBuffer(page, mode);
 }

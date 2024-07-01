@@ -15,6 +15,7 @@
 #include "smgr.h"
 #include "memStack.h"
 #include "tfile.h"
+#include "memStack.h"
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -25,10 +26,12 @@ int config_fsync = 0;
 /* 存储管理上下文 */
 PStorageMangeContext smgrContext = NULL;
 
+
 static PVFVec GetVFec(PsgmrInfo smgrInfo, ForkType forkNum);
 static PVFVec DeleteVF(PVFVec head, PVFVec node);
+static PVFVec FindVF(PVFVec head, ForkType forknum);
 
-static int InitSmgr();
+static void LockSmgr(LockState state);
 static int AddFileInfoToSmgrContext(PsgmrInfo smgrInfo, PVFVec vpos);
 static int AddFileToSmgrContext(PVFVec vf, PFileHandle fileHandle);
 static int CloseFileSmgrContext();
@@ -37,7 +40,7 @@ static int CloseFileSmgrContext();
  * 初始化存储管理上下文信息 
  * 内存在数据字典上下文中创建，不需要单独释放
 */
-static int InitSmgr()
+int InitSmgr()
 {
     if(NULL != smgrContext)
         return 0;
@@ -47,6 +50,8 @@ static int InitSmgr()
     smgrContext->fileOpenedNum = 0;
     smgrContext->vFileNum = 0;
     smgrContext->vfhead = NULL;
+    InitRWLock(&smgrContext->lock);
+    
     return 0;
 }
 
@@ -58,19 +63,20 @@ static int AddFileInfoToSmgrContext(PsgmrInfo smgrInfo, PVFVec vpos)
 {
     if(NULL == smgrContext)
     {
-        InitSmgr();
+        return -1;
     }
-
+    
     do 
     {
         if(NULL == smgrContext->vfhead)
         {
-            smgrContext->vfhead = smgrInfo->vfhead;
+            smgrContext->vfhead = smgrInfo->vfhead = vpos;
             break;
         }
         
-        if(NULL == vpos)
+        if(NULL == smgrInfo->vfhead)
         {
+            smgrInfo->vfhead = vpos;
             AddDListTail((PDList*)&(smgrContext->vfhead), (PDList)smgrInfo->vfhead);
         }
         else 
@@ -79,22 +85,22 @@ static int AddFileInfoToSmgrContext(PsgmrInfo smgrInfo, PVFVec vpos)
         }
     }while(0);
     
+    smgrInfo->vfend = vpos;
     smgrContext->vFileNum += 1;
 
     /* TODO: replace fd */
     if(smgrContext->fileOpenedNum > smgrContext->fileMaxNum-1)
         CloseFileSmgrContext();
+ 
     return 0;
 }
 
 static int AddFileToSmgrContext(PVFVec vf, PFileHandle fileHandle)
 {
-    /* TODO: replace fd */
-    if(smgrContext->fileOpenedNum > smgrContext->fileMaxNum-1)
-        CloseFileSmgrContext();
-
+    LockVF(vf, LOCK_EXCLUSIVE);
     vf->pfh = fileHandle;
     smgrContext->fileOpenedNum += 1;
+    LockVF(vf, RELEASE_LOCK);
 }
 
 /* 
@@ -128,46 +134,65 @@ static int CloseFileSmgrContext()
     return 0;
 }
 
+static PVFVec CreateVFVec(ForkType forkNum, PFileHandle fhd)
+{
+    PVFVec vfInfo = (PVFVec)CreateDictionaryItem(sizeof(VFVec));
+
+    vfInfo->forkNum = forkNum;
+    vfInfo->pfh = fhd;
+    InitRWLock(&vfInfo->lock);
+
+    return vfInfo;
+}
+
+static PVFVec AddVFec(PsgmrInfo smgrInfo, ForkType forkNum)
+{
+    PVFVec vpos = NULL;
+
+    LockSmgr(LOCK_EXCLUSIVE);
+    vpos = FindVF(smgrInfo->vfhead, forkNum);
+    if(NULL != vpos)
+    {
+        LockSmgr(RELEASE_LOCK);
+        return vpos;
+    }
+
+    vpos = CreateVFVec(forkNum, NULL);
+    INIT_DLIST_NODE(vpos->list);
+
+    AddFileInfoToSmgrContext(smgrInfo, vpos);
+    LockSmgr(RELEASE_LOCK);
+    return vpos;
+}
 
 static PVFVec GetVFec(PsgmrInfo smgrInfo, ForkType forkNum)
 {
     PVFVec vpos = NULL;
+    PVFVec vhead = NULL;
     char fname[FILE_PATH_MAX_LEN] = {0};
 
-    if(NULL == smgrInfo->vfhead)
+    LockSmgr(LOCK_SHARED);
+    vhead = smgrInfo->vfhead;
+    LockSmgr(RELEASE_LOCK);
+    if(NULL == vhead)
     {
-        smgrInfo->vfhead = (PVFVec)AllocMem(sizeof(VFVec));
-        INIT_DLIST_NODE(smgrInfo->vfhead->list);
-        smgrInfo->vfhead->forkNum = forkNum;
-        smgrInfo->vfhead->pfh = NULL;
-        smgrInfo->vfend = smgrInfo->vfhead;
-
-        AddFileInfoToSmgrContext(smgrInfo, NULL);
-        vpos = smgrInfo->vfhead;
+        vpos = AddVFec(smgrInfo, forkNum);
     }
-    
+
     /* read info */
     if(NULL == vpos)
     {
-        vpos = SearchVF(smgrInfo->vfhead, forkNum);
+        vpos = FindVF(smgrInfo->vfhead, forkNum);
         if(NULL == vpos)
         {
-            vpos = (PVFVec)AllocMem(sizeof(VFVec));
-            vpos->forkNum = forkNum;
-            vpos->pfh = NULL;
-            
-            AddFileInfoToSmgrContext(smgrInfo, vpos);
-
-            smgrInfo->vfend = vpos;
+            vpos = AddVFec(smgrInfo, forkNum);
         }
     }
+
     return vpos;
 }
 
-/* 
- * 查找某个表对应的虚拟文件描述符
- */
-PVFVec SearchVF(PVFVec head, ForkType forknum)
+static PVFVec FindVF(PVFVec head, ForkType forknum)
 {
     PVFVec vpos = NULL;
     PVFVec tpos = head;
@@ -186,6 +211,20 @@ PVFVec SearchVF(PVFVec head, ForkType forknum)
         if(tpos == head)
             break;
     }
+
+    return vpos;
+}
+
+/* 
+ * 查找某个表对应的虚拟文件描述符
+ */
+PVFVec SearchVF(PVFVec head, ForkType forknum)
+{
+    PVFVec vpos = NULL;
+
+    LockSmgr(LOCK_SHARED);   
+    vpos = FindVF(head, forknum);
+    LockSmgr(RELEASE_LOCK);
 
     return vpos;
 }
@@ -222,7 +261,10 @@ PVFVec smgr_create(PsgmrInfo smgrInfo, char *fileName, ForkType forkNum)
     if(NULL == smgrInfo)
         return NULL;
 
+    /* vfvec add to mgr first, which avoid other worker create double. */
     vpos = GetVFec(smgrInfo, forkNum);
+    if(vpos->pfh != NULL)
+        return NULL;
 
     switch(forkNum)
     {
@@ -293,12 +335,18 @@ int smgr_read(PVFVec vfInfo, PPageOffset pageOffset, char *page)
     INT64 offset = ((INT64)pageOffset->pageno - 1) * PAGE_MAX_SIZE;
     int readlen = 0;
 
+    LockVF(vfInfo, LOCK_EXCLUSIVE);
+
     readlen = FileReadPage(vfInfo->pfh, page, offset, PAGE_MAX_SIZE);
     if(PAGE_MAX_SIZE != readlen)
     {
-       // hat_error("read page error, readlen %d", readlen);
+        LockVF(vfInfo, RELEASE_LOCK);
+       // hat_error("read page error, readlen %d pageno:%d ", readlen, pageOffset->pageno);
         return -1;
     }
+
+    LockVF(vfInfo, RELEASE_LOCK);
+
     return readlen;
 }
 
@@ -307,11 +355,16 @@ int smgr_write(PVFVec vfInfo, PPageOffset pageOffset, PPageHeader page)
     INT64 ret = 0;
     INT64 offset = ((INT64)pageOffset->pageno - 1) * PAGE_MAX_SIZE;
 
+    LockVF(vfInfo, LOCK_EXCLUSIVE);
+    
     ret = FileWritePage(vfInfo->pfh, offset, PAGE_MAX_SIZE, (char *)page);
     if(ret < PAGE_MAX_SIZE)
     {
+        LockVF(vfInfo, RELEASE_LOCK);
         return -1;
     }
+    
+    LockVF(vfInfo, RELEASE_LOCK);
 
     if(config_fsync)
         ret |= FileSync(vfInfo->pfh);
@@ -333,8 +386,12 @@ int smgr_close(PVFVec vfInfo)
     if(config_fsync)
         ret |= FileSync(vfInfo->pfh);
     
+    LockVF(vfInfo, LOCK_EXCLUSIVE);
+
     FileClose(vfInfo->pfh);
     vfInfo->pfh = NULL;
+
+    LockVF(vfInfo, RELEASE_LOCK);
 
     smgrContext->fileOpenedNum -= 1;
     return ret;
@@ -342,9 +399,15 @@ int smgr_close(PVFVec vfInfo)
 
 int smgrRelease(PsgmrInfo sgmrInfo)
 {
-    PVFVec head = sgmrInfo->vfhead;
-    PVFVec tpos = (PVFVec)sgmrInfo->vfend;
-    PVFVec tpos_prev = (PVFVec)sgmrInfo->vfend->list.prev;
+    PVFVec head = NULL;
+    PVFVec tpos = NULL;
+    PVFVec tpos_prev = NULL;
+
+    LockSmgr(LOCK_EXCLUSIVE);
+
+    head = sgmrInfo->vfhead;
+    tpos = (PVFVec)sgmrInfo->vfend;
+    tpos_prev = (PVFVec)sgmrInfo->vfend->list.prev;
 
     while(tpos != NULL)
     {
@@ -368,8 +431,47 @@ int smgrRelease(PsgmrInfo sgmrInfo)
         tpos = NULL;
     }
 
+    LockSmgr(RELEASE_LOCK);
+
     FreeMem(sgmrInfo);
 
     return 0;
 }
 
+void LockVF(PVFVec vfInfo, LockState state)
+{
+    switch(state)
+    {
+        case LOCK_EXCLUSIVE:
+            AcquireLock(&vfInfo->lock, RWLock_WRITE);
+        break;
+        case RELEASE_LOCK:
+            ReleaseRWLock(&vfInfo->lock, RWLock_WRITE);
+        break;
+        default:
+            hat_error("lockvf failure %d", state);
+        break;
+    }
+}
+
+static void LockSmgr(LockState state)
+{
+    switch(state)
+    {
+        case LOCK_SHARED:
+            AcquireLock(&smgrContext->lock, RWLock_READ);
+        break;
+
+        case RELEASE_LOCK:
+            ReleaseRWLock(&smgrContext->lock, RWLock_WRITE);
+        break;
+
+        case LOCK_EXCLUSIVE:
+            AcquireLock(&smgrContext->lock, RWLock_WRITE);
+        break;
+
+        default:
+            hat_error("lockvf failure %d", state);
+        break;
+    }
+}

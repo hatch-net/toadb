@@ -19,8 +19,6 @@
 #include "smgr.h"
 
 
-#define FILE_PATH_MAX_LEN   1024
-#define FILE_NAME_MAX_LEN   64
 
 /* default 1GB (1*1024*1024*1024) 4Byte */
 #define FILE_SEGMENT_MAX_SIZE (0x40000000) 

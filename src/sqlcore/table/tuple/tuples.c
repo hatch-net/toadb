@@ -12,8 +12,6 @@
 
 
 
-#define hat_log printf
-
 /*
  * 由values list 形成内存中的tuple
  */

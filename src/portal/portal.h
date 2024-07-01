@@ -21,6 +21,7 @@
 #include "list.h"
 
 #define PORT_BUFFER_SIZE 2048
+#define MAX_COMMAND_LENGTH 2048
 
 typedef struct Scan *PScan;
 typedef struct PlanStateNode *PPlanStateNode;
@@ -29,6 +30,7 @@ typedef struct TableRowData *PTableRowData;
 typedef enum msgType
 {
     PORT_MSG_START,
+    PORT_MSG_REQUEST,
     PORT_MSG_BEGIN,
     PORT_MSG_CONTINUE,
     PORT_MSG_FINISH,

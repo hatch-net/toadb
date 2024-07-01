@@ -31,7 +31,8 @@ typedef struct TableList
     PTableMetaInfo tableDef;
     PGroupPageHeader groupInfo;  /* first group page */
     PsgmrInfo sgmr;
-    RWLockInfo rwLock;          /* table lock level */
+    RWLockInfo tblLock;          /* table lock level */
+    RWLockInfo extLock;          /* table extension */
 }TableList, *PTableList;
 
 typedef struct DictionaryContext
@@ -49,11 +50,7 @@ int ReleaseAllTblInfoResource();
 PTableList GetTableInfo(char *filename);
 PTableList GetTableInfoByRel(PRelation rel);
 
-int CloseTable(PTableList tbl);
 PTableList CreateTblInfo(PTableMetaInfo tblDef);
-
-/* search table metadata infomation. */
-PTableList SearchTblInfo(char *filename);
 
 /* search table metadata, return index of attribute Name position. if not found, return -1 . */
 int GetAttrIndex(PTableList tblInfo, char *attrName);
@@ -61,6 +58,12 @@ int GetAttrIndex(PTableList tblInfo, char *attrName);
 /* search table metadata, if not found, return NULL . */
 PColumnDefInfo GetAttrDef(PTableList tblInfo, char *attrName);
 
+char * CreateDictionaryItem(int size);
 
+#define StartExtensionTbl(tbl) StartExtensionLock(tbl, __FUNCTION__, __LINE__)
+#define EndExtensionTbl(tbl) EndExtensionLock(tbl, __FUNCTION__, __LINE__)
+
+void StartExtensionLock(PTableList tblInfo, char *fun, int line);
+void EndExtensionLock(PTableList tblInfo, char *fun, int line);
 
 #endif 

@@ -27,12 +27,26 @@
 DList *g_TblList = NULL;
 PDictionaryContext dictionInfo = NULL;
 
-
+/* search table metadata infomation. */
+static PTableList SearchTblInfo(char *filename);
 static PTableList LoadTblInfo(char *filename);
+static PTableList FindTblInfo(char *filename);
 
 static void LockTblInfoContextExclusion();
 static void ReleaseLockTblInfoContext();
 static void LockTblInfoContextShare();
+
+static PTableList AllocTblInfo()
+{
+    PTableList tbl = NULL;
+
+    tbl = (PTableList)AllocMem(sizeof(TableList));
+    memset(tbl, 0x00, sizeof(TableList));
+
+    InitRWLock(&tbl->tblLock);
+    InitRWLock(&tbl->extLock);
+    return tbl;
+}
 
 /*
  * table metadata load from table and group files.
@@ -85,13 +99,32 @@ int InitTblInfo()
         dictionInfo->tblList = (DList *)AllocMem(sizeof(DList));
 
         InitRWLock(&dictionInfo->rwLock);
-
+        
         g_TblList = dictionInfo->tblList;
         g_TblList->prev = g_TblList->next = g_TblList;
     }
 
+    /* init storage manager */
+    InitSmgr();
     MemMangerSwitchContext(oldContext);
     return 0;
+}
+
+int GetAttrIndex(PTableList tblInfo, char *attrName)
+{
+    int index = -1; /* normal start from 0 */
+    int col = 0;
+
+    for (col = 0; col < tblInfo->tableDef->colNum; col++)
+    {
+        if (strcmp(attrName, tblInfo->tableDef->column[col].colName) == 0)
+        {
+            index = col;
+            break;
+        }
+    }
+
+    return index;
 }
 
 static PTableList LoadTblInfo(char *filename)
@@ -100,14 +133,19 @@ static PTableList LoadTblInfo(char *filename)
     PMemContextNode oldContext = NULL;
     int ret = 0;
 
-    LockTblInfoContextExclusion();
-
     /* MemoryContext switch to Database dictionary memory context. */
     oldContext = MemMangerSwitchContext(dictionaryContext);
+    LockTblInfoContextExclusion();
+
+    /* recheck */
+    thisTbl = FindTblInfo(filename); 
+    if(NULL != thisTbl)
+    {
+        goto FOUND;
+    } 
 
     /* table info is not find, or table file is not opened. */
-    thisTbl = (PTableList)AllocMem(sizeof(TableList));
-    memset(thisTbl, 0x00, sizeof(TableList));
+    thisTbl = AllocTblInfo();
 
     /* 初始化 */
     ret = TableOpen(thisTbl, filename, MAIN_FORK);
@@ -121,7 +159,8 @@ static PTableList LoadTblInfo(char *filename)
     thisTbl->list.prev = g_TblList->next->prev;
     thisTbl->list.next = g_TblList->next;
     g_TblList->next = &(thisTbl->list);
-    
+
+FOUND:    
     ReleaseLockTblInfoContext();
     MemMangerSwitchContext(oldContext);
     return thisTbl;
@@ -159,6 +198,24 @@ PTableList GetTableInfoByRel(PRelation rel)
     return tbl;
 }
 
+
+PColumnDefInfo GetAttrDef(PTableList tblInfo, char *attrName)
+{
+    PColumnDefInfo colDef = NULL;
+    int col = 0; /* normal start from 0 */
+
+    for (col = 0; col < tblInfo->tableDef->colNum; col++)
+    {
+        if (strcmp(attrName, tblInfo->tableDef->column[col].colName) == 0)
+        {
+            colDef = &(tblInfo->tableDef->column[col]);
+            break;
+        }
+    }
+
+    return colDef;
+}
+
 /* 创建表文件及数据字典 */
 PTableList CreateTblInfo(PTableMetaInfo tblDef)
 {
@@ -182,14 +239,22 @@ PTableList CreateTblInfo(PTableMetaInfo tblDef)
         return NULL;
     }
 
-    LockTblInfoContextExclusion();
-
     /* MemoryContext switch to Database dictionary memory context. */
     oldContext = MemMangerSwitchContext(dictionaryContext);
+    LockTblInfoContextExclusion();
+
+    /* TODO recheck */
+    thisTbl = FindTblInfo(tblDef->tableName);
+    if (NULL != thisTbl)
+    {
+        /* found */
+        hat_error("table exitst.");
+        thisTbl = NULL;
+        goto FOUND;
+    }
 
     /* dictionary initialize */
-    thisTbl = (PTableList)AllocMem(sizeof(TableList));
-    memset(thisTbl, 0x00, sizeof(TableList));
+    thisTbl = AllocTblInfo();
 
     size = sizeof(TableMetaInfo) + sizeof(ColumnDefInfo) * tblDef->colNum;
     thisTbl->tableDef = (PTableMetaInfo)AllocMem(size);
@@ -226,15 +291,16 @@ PTableList CreateTblInfo(PTableMetaInfo tblDef)
     thisTbl->list.next = g_TblList->next;
     g_TblList->next = &(thisTbl->list);
 
-    MemMangerSwitchContext(oldContext);
-    ReleaseLockTblInfoContext();
-
     hat_relcache_debug("CreateTblInfo thisTbl:%p thisTbl->list.prev:%p thisTbl->list.next:%p ",thisTbl, thisTbl->list.prev, thisTbl->list.next);
+FOUND:
+    ReleaseLockTblInfoContext();
+    MemMangerSwitchContext(oldContext);
+
     return thisTbl;
 
 ERRRET:
-    MemMangerSwitchContext(oldContext);
     ReleaseLockTblInfoContext();
+    MemMangerSwitchContext(oldContext);
 
     ReleaseTblInfo(thisTbl);
     return NULL;
@@ -279,12 +345,10 @@ int ReleaseTblInfo(PTableList tblInfo)
     return 0;
 }
 
-PTableList SearchTblInfo(char *filename)
+static PTableList FindTblInfo(char *filename)
 {
     PTableList tbl = NULL;
     PTableList temp = NULL;
-
-    LockTblInfoContextShare();
 
     temp = (PTableList)g_TblList->next;
     while (NULL != temp && temp != (PTableList)g_TblList)
@@ -299,7 +363,15 @@ PTableList SearchTblInfo(char *filename)
         temp = (PTableList)((DList *)temp)->next;
     }
 
-    
+    return tbl;
+}
+
+PTableList SearchTblInfo(char *filename)
+{
+    PTableList tbl = NULL;
+
+    LockTblInfoContextShare();
+    tbl = FindTblInfo(filename);    
     ReleaseLockTblInfoContext();
 
     return tbl;
@@ -331,12 +403,26 @@ int ReleaseAllTblInfoResource()
     return 0;
 }
 
+/* TODO: here need lock to protect. */
+char * CreateDictionaryItem(int size)
+{
+    PMemContextNode oldContext = NULL;
+    char *ptr = NULL;
+
+    /* MemoryContext switch to Database dictionary memory context. */
+    oldContext = MemMangerSwitchContext(dictionaryContext);
+    ptr = (char *)AllocMem(size);
+    MemMangerSwitchContext(oldContext);
+
+    return ptr;
+}
+
 static void LockTblInfoContextExclusion()
 {
     if(NULL == dictionInfo)
         return ;
 
-    AcquireRWLock(&dictionInfo->rwLock, RWLock_WRITE);
+    AcquireLock(&dictionInfo->rwLock, RWLock_WRITE);
 }
 
 static void LockTblInfoContextShare()
@@ -344,7 +430,7 @@ static void LockTblInfoContextShare()
     if(NULL == dictionInfo)
         return ;
 
-    AcquireRWLock(&dictionInfo->rwLock, RWLock_READ);
+    AcquireLock(&dictionInfo->rwLock, RWLock_READ);
 }
 
 static void ReleaseLockTblInfoContext()
@@ -353,4 +439,21 @@ static void ReleaseLockTblInfoContext()
         return ;
 
     ReleaseRWLock(&dictionInfo->rwLock, RWLock_NULL);
+}
+
+void StartExtensionLock(PTableList tblInfo, char *fun, int line)
+{
+    if(NULL == tblInfo)
+        return;
+    
+    AcquireRWLockEx(&tblInfo->extLock, RWLock_WRITE, fun, line);
+}
+
+
+void EndExtensionLock(PTableList tblInfo, char *fun, int line)
+{
+    if(NULL == tblInfo)
+        return;
+    
+    ReleaseRWLockEx(&tblInfo->extLock, RWLock_WRITE, fun, line);
 }

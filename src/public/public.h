@@ -34,8 +34,7 @@
 
 #define COMMENT_NAME_MAX_LEN (32)
 
-
-#define COMMAND_FINISH "finish"
-#define COMMAND_FiNISH_LEN 6
+#define FILE_PATH_MAX_LEN   1024
+#define FILE_NAME_MAX_LEN   64
 
 #endif

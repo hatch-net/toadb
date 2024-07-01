@@ -22,9 +22,9 @@
 #include <pthread.h>
 
 
-int maxThreadWorkerNum = 10;
-int initThreadWorkerNum = 10;
-int addThreadWorkerNum = 2;
+int maxThreadWorkerNum = 16;
+int initThreadWorkerNum = 16;
+int addThreadWorkerNum = 1;
 
 __thread PResourceOnwerPool resourceOnwerPool = NULL;
 __thread PMemContextNode resourceMemContext = NULL;

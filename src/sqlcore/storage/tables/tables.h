@@ -36,7 +36,6 @@ int TableWrite(PTableList tblInfo, PPageHeader page, ForkType forkNum);
 
 /* object id update */
 int GetObjectId();
-void SetObjectId(int id);
 
 /* 
  * page tuple operator 

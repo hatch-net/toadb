@@ -84,6 +84,21 @@ esac
 # functions
 ######################################
 
+function executorSql()
+{
+  sql="${1}"
+  sql_command="${toad_executor_command} \""${sql}"\" "
+#  sh -c "${sql_command}" | tee -a ${result_out}
+ #  echo "${sql}"
+  sh -c "${sql_command}" > /dev/null
+#  sh -c "${sql_command}" 
+  if [ $? -ne 0 ]; then
+    echo "cllient failure."
+    exit 1
+  fi
+#  sleep 1
+}
+
 # @args <beg> <end>
 # return random integer in [<beg>, <end>)
 function random_range() {
@@ -115,29 +130,24 @@ function tpcb() {
     local datetime=`date`
 
     # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;"
-    local sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
-    local sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}" > /dev/null
+    sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
+    executorSql "${sql}"
 
     # "SELECT abalance FROM toad_accounts WHERE aid = :aid;"
     sql="SELECT abalance FROM toad_accounts WHERE aid = ${aid};"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}" > /dev/null
+    executorSql "${sql}"
 
     # "UPDATE toad_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;"
     sql="UPDATE toad_tellers SET tbalance = tbalance + ${delta} WHERE tid = ${tid};"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"  > /dev/null
+    executorSql "${sql}"
 
     # "UPDATE toad_branches SET bbalance = bbalance + :delta WHERE bid = :bid;"
     sql="UPDATE toad_branches SET bbalance = bbalance + ${delta} WHERE bid = ${bid};"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"  > /dev/null
+    executorSql "${sql}"
 
     # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);"
     sql="INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (${tid}, ${bid}, ${aid}, ${delta}, '${datetime}');"
-    sql_command="${toad_executor_command} \"${sql}\" "  
-    sh -c "${sql_command}"  > /dev/null
+    executorSql "${sql}"
 }
 
 # @args <bid> <tid> <aid> <delta>
@@ -157,18 +167,15 @@ function updatetest() {
     
     # "UPDATE toad_accounts SET abalance = abalance + :delta WHERE aid = :aid;"
     local sql="UPDATE toad_accounts SET abalance = abalance + ${delta} WHERE aid = ${aid};"
-    local sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}" > /dev/null
+    executorSql "$sql"
 
     # "SELECT abalance FROM toad_history WHERE aid = :aid;"
     sql="SELECT abalance FROM toad_history WHERE aid = ${aid};"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}"  > /dev/null
+    executorSql "$sql"
 
     # "INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);"
     sql="INSERT INTO toad_history (tid, bid, aid, delta, mtime) VALUES (${tid}, ${bid}, ${aid}, ${delta}, '${datetime}');"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}" > /dev/null
+    executorSql "$sql"
 }
 
 
@@ -181,8 +188,7 @@ function onlyselect() {
 
     # SELECT abalance FROM uxbench_accounts WHERE aid = :aid;
     sql="SELECT abalance FROM toad_accounts WHERE aid = ${aid};"
-    sql_command="${toad_executor_command} \"${sql}\" "
-    sh -c "${sql_command}" > /dev/null
+    executorSql "$sql"
 }
 
 said=1

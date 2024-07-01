@@ -78,7 +78,7 @@ PThreadWorkerInfo CreeateWorkerThread(int index)
     pthread_t threadId;
     PMemContextNode oldContext;
 
-    worker->tw_id = index;
+    worker->tw_id = index + 1;
     worker->taskEntry = NULL;
     
     snprintf(workerName, WORK_NAME_LEN, "worker-%d",index);
@@ -172,7 +172,7 @@ int ShutDownWorkerThreadImmidately(PThreadWorkerInfo workerInfo)
 
 int IsIdleWorker(PThreadWorkerInfo worker)
 {
-    hat_debug1_threadpool("IsIdleWorker threadid:%d - workerid:%d - state:%d ", worker->tw_threadid, worker->tw_id, worker->tw_state);
+    hat_debug1_threadpool("IsIdleWorker threadid:%u - workerid:%d - state:%d ", worker->tw_threadid, worker->tw_id, worker->tw_state);
 
     if(TW_IDLE == worker->tw_state)
     {

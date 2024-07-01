@@ -13,7 +13,7 @@
 #include "buffer.h"
 #include "memStack.h"
 
-#define hat_log printf
+
 
 /* scanner_init declare is needed by raw_parser */
 extern void* scanner_init(char *sqlStr, PSCANNER_DATA yyext);

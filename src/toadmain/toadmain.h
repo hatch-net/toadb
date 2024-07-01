@@ -20,7 +20,7 @@
  * backend service mode, it represent the share memory size. 
  * single mode, it represent the sql buffer size.
 */
-#define MAX_COMMAND_LENGTH 1024
+
 
 typedef enum enServRunMode 
 {
@@ -40,6 +40,18 @@ typedef enum enClientCommand
     SERVER_EXCUTOR_RESULT_FINISH,
     INVALID_COMMAND
 }enClientCommand;
+
+typedef struct SysGlobalData 
+{
+    unsigned int objectId;
+}SysGlobalData, *PSysGlobalData;
+#define SYSGLOBALDATA_SIZE sizeof(SysGlobalData)
+
+typedef struct SysGlobalContext
+{
+    int fd;
+    SysGlobalData globalData;
+}SysGlobalContext, *PSysGlobalContext;
 
 int toadbMain(int argc, char *argv[]) ;
 
@@ -63,4 +75,11 @@ int args_opt(int argc, char *argv[]);
 
 int checkDataDir();
 void ShowToadbInfo();
+
+int InitSysGlobal();
+int DestroySysGlobal();
+int ReadSysGlobalData(PSysGlobalContext sysContext);
+int WriteSysGlobalData(PSysGlobalContext sysContext);
+int GetAndIncObjectId();
+
 #endif

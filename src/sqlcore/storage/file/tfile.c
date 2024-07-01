@@ -238,7 +238,7 @@ PFileHandle CreateFile(char *filename, int mode)
         return NULL;
     }
 
-    pfh = (PFileHandle)AllocMem(sizeof(FileHandle));
+    pfh = (PFileHandle)CreateDictionaryItem(sizeof(FileHandle));
     pfh->fd = fd;
 
     return pfh;
@@ -270,7 +270,7 @@ PFileHandle OpenFile(char *filename, int mode)
         return pfh;
     }
 
-    pfh = (PFileHandle)AllocMem(sizeof(FileHandle));
+    pfh = (PFileHandle)CreateDictionaryItem(sizeof(FileHandle));
     pfh->fd = fd;
 
     return pfh;

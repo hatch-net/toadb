@@ -19,7 +19,6 @@
 #include "queryNode.h"
 #include "memStack.h"
 
-#define hat_log printf
 
 static PNode ProcessTableScan(PPlanProcessor planProcess);
 static PNode ProcessTopNode(PPlanProcessor planProcessor);
