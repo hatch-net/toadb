@@ -92,33 +92,33 @@ PExprDataInfo getDataInfo(void *pval, valueType type, PExprDataInfo resExprData)
     {  
         case VT_POINTER:  
             result->size = getDataTypeSize(pval, type);
-            result->data->pData = pval;
+            result->data.pData = pval;
             break;  
         case VT_INT:              
         case VT_INTEGER:  
             result->size = getDataTypeSize(pval, type);
-            result->data->iData = *((int *)pval);
+            result->data.iData = *((int *)pval);
             break;  
         case VT_VARCHAR:  
         case VT_STRING:  
             result->size = getDataTypeSize(pval, type);
-            result->data->pData = pval;
+            result->data.pData = pval;
             break;  
         case VT_CHAR:  
             result->size = getDataTypeSize(pval, type);
-            result->data->cData = *((char *)pval);
+            result->data.cData = *((char *)pval);
             break;  
         case VT_DOUBLE:  
             result->size = getDataTypeSize(pval, type);
-            result->data->dData = *((double *)pval);  
+            result->data.dData = *((double *)pval);  
             break;  
         case VT_FLOAT:  
             result->size = getDataTypeSize(pval, type);
-            result->data->fData = *((float *)pval); 
+            result->data.fData = *((float *)pval); 
             break;  
         case VT_BOOL:  
             result->size = getDataTypeSize(pval, type);
-            result->data->iData = *((char *)pval); 
+            result->data.iData = *((char *)pval); 
             break;  
         default:   
             break;  
@@ -136,33 +136,33 @@ HAT_BOOL getDataBool(PExprDataInfo dataInfo)
     switch (dataInfo->type) 
     {  
         case VT_POINTER:  
-            if(dataInfo->data->pData != NULL)
+            if(dataInfo->data.pData != NULL)
                 result = HAT_TRUE;
             break;  
         case VT_INT:              
         case VT_INTEGER:  
-            if(dataInfo->data->iData != 0)
+            if(dataInfo->data.iData != 0)
                 result = HAT_TRUE;
             break;  
         case VT_VARCHAR:  
         case VT_STRING:  
-            if((dataInfo->data->pData != NULL) && (dataInfo->size > 0))
+            if((dataInfo->data.pData != NULL) && (dataInfo->size > 0))
                 result = HAT_TRUE;
             break;  
         case VT_CHAR:  
-            if(dataInfo->data->cData != '\0')
+            if(dataInfo->data.cData != '\0')
                 result = HAT_TRUE;
             break;  
         case VT_DOUBLE:  
-            if(fabs(dataInfo->data->dData) > FLOAT_EPSILON)
+            if(fabs(dataInfo->data.dData) > FLOAT_EPSILON)
                 result = HAT_TRUE;  
             break;  
         case VT_FLOAT:  
-            if(fabs(dataInfo->data->fData) > FLOAT_EPSILON)
+            if(fabs(dataInfo->data.fData) > FLOAT_EPSILON)
                 result = HAT_TRUE;  
             break;  
         case VT_BOOL:  
-            if(dataInfo->data->iData != 0)
+            if(dataInfo->data.iData != 0)
                 result = HAT_TRUE;
             break;  
         default:   

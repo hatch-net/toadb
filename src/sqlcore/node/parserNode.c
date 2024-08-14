@@ -180,6 +180,22 @@ static void ShowNodUpdateStmt(PNode n, char *prompt, int level)
     hat_log("} %s T_UpdateStmt Node end", prompt);
 }
 
+static void ShowNodDeleteStmt(PNode n, char *prompt, int level)
+{
+    PDeleteStmt deletestmt = (PDeleteStmt)n;
+
+    ShowBlank(level);
+    hat_log("{ T_DeleteStmt Node: ");
+
+    ShowNode(deletestmt->relation, "relation", level+1);
+
+    TravelListCell(deletestmt->fromList, "fromList ", level+1);
+    TravelListCell(deletestmt->whereList, "whereList", level+1);
+
+    ShowBlank(level);
+    hat_log("} %s T_DeleteStmt Node end", prompt);
+}
+
 static void ShowNodAttrName(PNode n, char *prompt, int level)
 {
     PAttrName stmt = (PAttrName)n;
@@ -697,6 +713,10 @@ static void ShowNode(PNode n, char *prompt, int level)
             ShowNodUpdateStmt(n, prompt, level);
         break;
         
+        case T_DeleteStmt:
+            ShowNodDeleteStmt(n, prompt, level);
+        break; 
+
         case T_AttrName:
             ShowNodAttrName(n, prompt, level);
         break;

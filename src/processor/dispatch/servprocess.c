@@ -56,7 +56,8 @@ int InitializeServer()
 
 void StopServer()
 {
-    servContext.status = 0;
+    hat_log("server stop...");
+    servContext.status = TW_STOPING;
 }
 
 int ServerLoop()
@@ -84,15 +85,20 @@ int ServerLoop()
     return 0;
 }
 
-int DestoryServer()
+void DestoryServer()
 {
+    hat_log("DestoryServer begin ... ");
     CloseSocket(servContext.servfd);
     servContext.servfd = 0;
+
+    hat_log("DestoryServer end ... ");
 }
 
 int FinishTask(PThreadTaskInfo taskInfo)
 {
     DestroyPortal(servContext.portal);
+
+    DestroySnapShot(servContext.snapshotPortal);
     
     if(taskInfo->clientfd > 0)
     {
@@ -112,6 +118,8 @@ int BeginTask(PThreadTaskInfo taskInfo)
     hat_log("task %d-%d starting...", servContext.taskId , servContext.servfd);
 
     servContext.portal = CreatePortal();
+    servContext.snapshotPortal = CreateSnapshot(maxThreadWorkerNum);
+
     return 0;
 }
 
@@ -195,4 +203,9 @@ int GetServFd()
 PPortal GetServPortal()
 {
     return servContext.portal;
+}
+
+PSnapShotInfo GetServSnapShot()
+{
+    return servContext.snapshotPortal;
 }

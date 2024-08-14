@@ -26,6 +26,7 @@
 
 static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl);
 static PExprDataInfo ProcessSetValueExpr(PExecState eState, PNode setValueExpr);
+static int FormOriginRowsPos(PExecState eState, PList targetList, PList rangTbl);
 
 PSelectExpreData InitSelectExpreData()
 {
@@ -33,16 +34,11 @@ PSelectExpreData InitSelectExpreData()
     int headsize = sizeof(SelectExpreData);
     int expreDataSize = sizeof(ExprDataInfo) + sizeof(Data);
 
-    selExpreData = (PSelectExpreData)AllocMem(headsize + expreDataSize*4);    
+    selExpreData = (PSelectExpreData)AllocMem(headsize + expreDataSize*3);    
 
     selExpreData->leftExpreData = (PExprDataInfo)((char*)selExpreData + headsize);
     selExpreData->righExpreData = (PExprDataInfo)((char*)(selExpreData->leftExpreData) + expreDataSize);
     selExpreData->resultExpreData = (PExprDataInfo)((char*)(selExpreData->righExpreData) + expreDataSize);
-
-    expreDataSize = sizeof(ExprDataInfo);
-    selExpreData->leftExpreData->data = (Data *)((char*)(selExpreData->leftExpreData) + expreDataSize);
-    selExpreData->righExpreData->data = (Data *)((char*)(selExpreData->righExpreData) + expreDataSize);
-    selExpreData->resultExpreData->data = (Data *)((char*)(selExpreData->resultExpreData) + expreDataSize);
 
     return selExpreData;
 }
@@ -126,9 +122,18 @@ PTableRowData ExecUpdateSelect(PExecState eState)
     PSelectResult psr = (PSelectResult)eState->subPlanNode;
     // PSelectState pst = (PSelectState)eState->subPlanStateNode;
 
-    /* find set expression result, and replace rowdata column values. */
-    if(FormNewRowsPos(eState, psr->targetList, psr->rtable) < 0)
-        return NULL;
+    switch(eState->commandType)
+    {
+        case CMD_UPDATE:
+            /* find set expression result, and replace rowdata column values. */
+            if(FormNewRowsPos(eState, psr->targetList, psr->rtable) < 0)
+                return NULL;
+        break;
+        case CMD_DELETE:
+            if(FormOriginRowsPos(eState, psr->targetList, psr->rtable) < 0)
+                return NULL;
+        break;
+    }
 
     /* new rowData return, type is PTableRowDataWithPos */
     return eState->scanRowDataLeft;
@@ -209,7 +214,11 @@ static int FormNewRowsPos(PExecState eState, PList targetList, PList rangTbl)
             break;
         }
 
-        /* 根据target中列的定义，找到对应列的位置信息 */
+        /* 
+         * Although this row data maybe older version, but position is latest version.
+         * Perhaps data is ignore here, position need only.
+         */
+        /* 根据target中列的定义，找到对应列的位置信息 */        
         oldColData = GetColRowDataEx(tblRowPosition, colDef, &tempDataPos, 0, &found, HAT_FALSE);
         if(NULL == oldColData)
         {
@@ -276,3 +285,99 @@ static PExprDataInfo ProcessSetValueExpr(PExecState eState, PNode setValueExpr)
     return exprResult;
 }
 
+/* 
+ * travers set value target list
+ * Is is project operator, and result have position infomation.
+ */
+static int FormOriginRowsPos(PExecState eState, PList targetList, PList rangTbl)
+{
+    foreachWithSize_define_Head;
+    PRangTblEntry rte = NULL;
+    PAttrDataPosition attrDataPos = NULL;
+    PExprDataInfo newColExprValue = NULL;
+
+    /* rowdata is reslut of pre project logical. */
+    PScanTableRowData scanRowData = (PScanTableRowData)eState->scanRowDataLeft;
+    
+    PRowColumnData newRowColData = NULL;
+    PTableRowDataWithPos resultRowData = NULL;
+    PRowColumnData oldColData = NULL;
+
+    AttrDataPosition tempDataPos = {0};
+    PTableRowDataPosition tblRowPosition = NULL;
+    PColumnRef colDef = NULL;
+    int rowIndex = 0;
+    int found = HAT_FALSE;
+
+    PResTarget restarget = NULL;
+    PTargetEntry targetEntry = NULL;
+    PColumnRef colNode = NULL;
+    int colrowIndex = 0;
+    int rowSize = 0;
+
+    if((NULL == targetList) || (NULL == scanRowData) || (NULL == rangTbl))
+    {
+        return -1;
+    }
+
+    resultRowData = (PTableRowDataWithPos)AllocMem(sizeof(TableRowDataWithPos) + sizeof(PAttrDataPosition) * targetList->length);
+    resultRowData->size = sizeof(TableRowDataWithPos) + sizeof(PAttrDataPosition) * targetList->length;
+    resultRowData->num = 0;
+
+    /* traverse target list */
+    foreachWithSize(targetList, tmpCell, listLen)
+    {
+        targetEntry = (PTargetEntry)GetCellNodeValue(tmpCell);
+        restarget = (PResTarget)targetEntry->colRef;
+
+
+        colDef = (PColumnRef)restarget->val;
+        colDef->attrIndex = targetEntry->attrIndex;
+
+        /* 根据target中列对应的表index，找到表的信息记录 */
+        rte = (PRangTblEntry)GetCellValueByIndex(rangTbl, targetEntry->rindex);
+        if(NULL == rte)
+        {
+            hat_error("Rang table not founded.");
+            break;
+        }
+
+        /* 根据表元数据定义，找到对应的表的查询行 */
+        tblRowPosition = GetTblRowDataPosition(scanRowData, rte->tblInfo, rte->rindex);
+        if(NULL == tblRowPosition)
+        {
+            hat_error("rowdata position not founded.");
+            break;
+        }
+
+        /* 根据target中列的定义，找到对应列的位置信息 */
+        oldColData = GetColRowDataEx(tblRowPosition, colDef, &tempDataPos, 0, &found, HAT_FALSE);
+        if(NULL == oldColData)
+        {
+            hat_error("column %d rowdata not founded.", resultRowData->num);
+            break;
+        } 
+
+        /* only one column */
+        rowSize = sizeof(AttrDataPosition) + sizeof(PRowColumnData);
+        attrDataPos = (PAttrDataPosition)AllocMem(rowSize);
+
+        attrDataPos->headItem = tempDataPos.headItem;
+        attrDataPos->rowData.columnData[0] = oldColData;
+        attrDataPos->rowData.size = oldColData->size;
+        attrDataPos->rowData.num = 1;
+
+        resultRowData->attrDataPos[resultRowData->num] = attrDataPos;
+        resultRowData->num += 1;
+    }
+
+    if(resultRowData->num != targetList->length)
+    {
+        hat_error("FormNewRowsPos column %d rowdata, and target request %d column, not equality.", colrowIndex, targetList->length);
+        return -1;
+    }
+
+    eState->scanRowDataLeft = (PTableRowData)resultRowData;
+
+    return 0;
+}

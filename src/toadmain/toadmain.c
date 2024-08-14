@@ -37,14 +37,15 @@
 #include "servprocess.h"
 #include "workermain.h"
 #include "atom.h"
+#include "config_pub.h"
+#include "transactionControl.h"
 
 
-// #define PARSER_TREE_PRINT 1
 
 char *globalData = "globalData";
 char *DataDir = "./toadbtest";
 int runMode = TOADSERV_RUN_CLIENT_SERVER;
-int pageNum = 64;
+int pageNum = 128;
 
 static SysGlobalContext sysGlobalData;
 
@@ -108,8 +109,6 @@ int ToadbServerMain(int argc, char *argv[])
 
 int ToadbCSModeServerMain(int argc, char *argv[]) 
 {
-    signal(SIGPIPE, SIG_IGN);
-
     RunToadbCSModeServerDemon();
     return 0;
 }
@@ -151,7 +150,7 @@ static int RunToadbCSModeServerDemon()
         return 0;
     }
 
-   // pid = fork();
+    pid = fork();
     if(pid == 0)
     {
         /* child process */
@@ -267,9 +266,13 @@ int StartToadbService()
 
 static int StartToadbServiceWithThread()
 {
+    atexit(ExitToad);
+
     InitToad();
     WorkerMain();
-    ExitToad();
+    //ExitToad();
+
+    exit(0);
     return 0;
 }
 
@@ -349,7 +352,10 @@ int ToadMainEntry(char *query)
     List *parserTree = NULL;
     List *queryTree = NULL;
     List *planTree = NULL;
+    PListCell tmpCell = NULL;
     PMemContextNode preContext = NULL, currContext = NULL;
+
+    StartTransaction();
 
     preContext = MemMangerNewContext("queryExcutor");
 
@@ -358,7 +364,7 @@ int ToadMainEntry(char *query)
     if(NULL == parserTree)
     {
         SendToPortStr(GetServPortal(), "Sytax is wrong, parser error.");
-        return -1;
+        goto ENDRET;
     }
 #ifdef PARSER_TREE_PRINT
     /* 打印解析树 */    
@@ -370,7 +376,7 @@ int ToadMainEntry(char *query)
     if(NULL == queryTree)
     {
         SendToPortStr(GetServPortal(), "object may be not found, query error.");
-        return -1;
+        goto ENDRET;
     }
 
 #ifdef PARSER_TREE_PRINT
@@ -378,21 +384,33 @@ int ToadMainEntry(char *query)
     travelParserTree(queryTree, "Query Tree: ");
 #endif
 
-    /* 由查询树生成计划树 */
-    planTree = QueryPlan(queryTree);
-    if(NULL == planTree)
+    for(tmpCell = queryTree->head; tmpCell != NULL; tmpCell = tmpCell->next) 
     {
-        SendToPortStr(GetServPortal(), "planner error.");
-        return -1;
-    }
+        PQuery node = (PQuery)(tmpCell->value.pValue);
+
+        /* 由查询树生成计划树 */
+        planTree = QueryPlan(node);
+        if(NULL == planTree)
+        {
+            SendToPortStr(GetServPortal(), "planner error.");
+            break;
+        }
+
 #ifdef PARSER_TREE_PRINT
-    /* 打印计划树 */ 
-    travelParserTree(planTree, "Plan Tree: ");
+        /* 打印计划树 */ 
+        travelParserTree(planTree, "Plan Tree: ");
 #endif
 
-    /* 执行器调用入口，根据执行计划进行执行 */
-    ExecutorMain(planTree);
+        StartTransaction();
 
+        /* 执行器调用入口，根据执行计划进行执行 */
+        ExecutorMain(planTree);
+
+        IncCommandCount();
+        FinishTransaction();
+    }
+
+ENDRET:
     /* 释放解析树占用的内存资源 */
     ReleaseParserTreeResource(parserTree);
     ReleaseAllResourceOwner();
@@ -400,6 +418,8 @@ int ToadMainEntry(char *query)
     /* relese memory context */
     currContext = MemMangerSwitchContext(preContext);
     MemMangerDeleteContext(preContext, currContext);
+
+    FinishTransaction();
 
     return 0;
 }
@@ -439,8 +459,13 @@ int InitToad()
     return ret;
 }
 
-int ExitToad()
+void ExitToad()
 {
+    hat_log("ExitToad begin!");
+
+    /* record global infomation */
+    RecordSysGlobal();
+
     /* 释放系统字典占用的内存资源 */
     ReleaseAllTblInfoResource();
     
@@ -449,10 +474,8 @@ int ExitToad()
 
     MemMangerDestroy();
 
-    DestroySysGlobal();
-
     SyslogDestroy();
-    return 0;
+    return ;
 }
 
 int checkDataDir()
@@ -540,6 +563,17 @@ int WriteSysGlobalData(PSysGlobalContext sysContext)
         hat_error("write sysdata failure[%d]",ret);
         return -1;
     }
+
+    lseek(sysContext->fd, SYSGLOBALDATA_SIZE, SEEK_SET);
+    ret = write(sysContext->fd, sysContext->transInfo, TRANSACTION_INFO_SIZE);
+    if(ret != TRANSACTION_INFO_SIZE)
+    {
+        hat_error("write transinfo data failure[%d]",ret);
+        return -1;
+    }
+    
+    fsync(sysContext->fd);
+
     return 0;
 }
 
@@ -557,16 +591,28 @@ int ReadSysGlobalData(PSysGlobalContext sysContext)
         hat_error("read sysdata failure[%d]",ret);
         return -1;
     }
+
+    lseek(sysContext->fd, SYSGLOBALDATA_SIZE, SEEK_SET);
+    ret = read(sysContext->fd, sysContext->transInfo, TRANSACTION_INFO_SIZE);
+    if(ret != TRANSACTION_INFO_SIZE)
+    {
+        hat_error("read transinfo data failure[%d]",ret);
+        return -1;
+    }
+
+    /* transaction initialize */
+    sysContext->transInfo->highLevelXtid = sysContext->transInfo->nextTransactionId;
+    sysContext->transInfo->lowLevelXtid = sysContext->transInfo->highLevelXtid;
+
     return 0;
 }
 
-int InitSysGlobal()
+int OpenGlobalFile()
 {
-    char filepath[FILE_PATH_MAX_LEN] = {0};
     int fd = 0;
-    int ret = 0;
+    char filepath[FILE_PATH_MAX_LEN] = {0};
     int flag = O_RDWR|O_EXCL;
- 
+
     snprintf(filepath, FILE_PATH_MAX_LEN, "%s/%s", DataDir, globalData);
 
     if (access(filepath, F_OK) != 0)
@@ -580,24 +626,38 @@ int InitSysGlobal()
         hat_error("open %s failure. [%d]",filepath, errno);
         return -1;
     }
+    return fd;
+}
 
-    sysGlobalData.fd = fd;
+int InitSysGlobal()
+{
+    int ret = 0;
     
+    sysGlobalData.fd = OpenGlobalFile();
+    sysGlobalData.transInfo = GetTransDataInfo();
+
     ret = ReadSysGlobalData(&sysGlobalData);
 
     return ret;
 }
 
-int DestroySysGlobal()
+int RecordSysGlobal()
 {
-    if(sysGlobalData.fd > 0)
-        close(sysGlobalData.fd );
+    if(sysGlobalData.fd <= 0)
+    {
+        sysGlobalData.fd = OpenGlobalFile();
+    }
+        
+    WriteSysGlobalData(&sysGlobalData);
+
+    close(sysGlobalData.fd);
     return 0;
 }
 
 int GetAndIncObjectId()
 {
     long long obj = atomic_fetch_add(&sysGlobalData.globalData.objectId, 1);
-    WriteSysGlobalData(&sysGlobalData);
     return (int)obj;
 }
+
+

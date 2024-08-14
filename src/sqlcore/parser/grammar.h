@@ -66,15 +66,20 @@ extern int yydebug;
     OFFSET = 276,
     AS = 277,
     BY = 278,
-    IDENT = 279,
-    STRING = 280,
-    INTNUMBER = 281,
-    FLOATNUMBER = 282,
-    LESS_EQ = 283,
-    GREATER_EQ = 284,
-    NOT_EQ = 285,
-    Op = 286,
-    UMINUS = 287
+    BEGIN_T = 279,
+    END_T = 280,
+    ROLLBACK = 281,
+    COMMIT = 282,
+    SAVEPOINT = 283,
+    IDENT = 284,
+    STRING = 285,
+    INTNUMBER = 286,
+    FLOATNUMBER = 287,
+    LESS_EQ = 288,
+    GREATER_EQ = 289,
+    NOT_EQ = 290,
+    Op = 291,
+    UMINUS = 292
   };
 #endif
 
@@ -92,7 +97,7 @@ union YYSTYPE
     PList list;
     PNode node;
 
-#line 96 "./sqlcore/parser/grammar.h" /* yacc.c:1909  */
+#line 101 "./sqlcore/parser/grammar.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

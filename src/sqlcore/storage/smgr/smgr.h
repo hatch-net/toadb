@@ -86,6 +86,7 @@ int smgr_write(PVFVec vfInfo, PPageOffset pageOffset, PPageHeader page);
 
 int smgrRelease(PsgmrInfo sgmrInfo);
 
-void LockVF(PVFVec vfInfo, LockState state);
+#define LockVFInfo(vfInfo, state)   LockVF(vfInfo, state, __FUNCTION__, __LINE__)
+void LockVF(PVFVec vfInfo, LockState state, const char *fun, int line);
 
 #endif 

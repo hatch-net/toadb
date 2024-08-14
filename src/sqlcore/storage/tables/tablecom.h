@@ -1,13 +1,25 @@
 /*
  *	toadb tables common defines  
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
+ * 
 */
+
 
 #ifndef HAT_TABLE_COM_H_H
 #define HAT_TABLE_COM_H_H
 
 #include "dataTypes.h"
 #include "public.h"
+#include "public_types.h"
 
 #define NAME_MAX_LEN  64
 #define PAGE_MAX_SIZE (4096)
@@ -48,6 +60,7 @@ typedef enum PageOp
 }PageOp;
 
 
+
 #define ITEM_OFFSET(item, page) ((char*)(item) - (char*)(page))
 #define ITEM_SIZE (sizeof(ItemData))
 
@@ -55,15 +68,13 @@ typedef enum PageOp
 #define GET_ITEM(offset, page) ((PItemData)((char*)(page) + offset))
 
 #define GET_ITEM_BY_INDEX(index, page) ((PItemData)((char*)((page)->item) + index * ITEM_SIZE))
-#define GET_ITEM_OFFSET_BY_INDEX(index) (index * ITEM_SIZE)
+#define GET_ITEM_OFFSET_BY_INDEX(index) ((index) * ITEM_SIZE)
 
 /* current item, dataOffset shift to starting of next item */
 #define GET_ITEM_INDEX(page) (((page)->dataOffset - PAGE_DATA_HEADER_SIZE) / ITEM_SIZE)
 
 /* start from 0 */
 #define GET_CUR_ITEM_INDEX(item, page) ((ITEM_OFFSET(item, page) - PAGE_DATA_HEADER_SIZE) / ITEM_SIZE)
-
-
 
 typedef struct RowID
 {
@@ -74,7 +85,7 @@ typedef struct ItemData
 {
     int offset;
     int len;            /* high bit is flag mask */
-    RowID rowid;    /* todo: */
+    RowID rowid;        /* postion: pageno,itemindex */
 }ItemData, *PItemData;
 
 /* high 4 bit is  flag */
@@ -160,6 +171,15 @@ typedef struct RowPosition
     int        itemIndex;
 }RowPosition, *PRowPosition;
 
+typedef struct TupleHeader
+{
+    XTID    tmin;           /* insert transaction id */
+    XTID    tmax;           /* delete transaction id, lock */
+    XTID    tinfo;          /* some flags are describe above offer extension infomation. */
+    UINT32  cid;
+    RowPosition  undo;      /* older version item postion. */
+}TupleHeader, *PTupleHeader;
+
 /*
  * file store tuple with two parts:
  * item    ---  | offset | length | other |
@@ -169,6 +189,7 @@ typedef struct RowColumnData
 {
     int size;                   /* RowColumnData size, include size,attrindex,data */
     int attrindex;              /* start from 0 */
+    TupleHeader headerData;
     char data[FLEXIBLE_SIZE];
 }RowColumnData, *PRowColumnData;
 

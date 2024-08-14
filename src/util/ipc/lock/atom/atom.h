@@ -15,18 +15,24 @@
 #ifndef HAT_ATOM_H_H
 #define HAT_ATOM_H_H
 
-typedef unsigned int  atom_uint;
-typedef unsigned int  uint32;
+#include "public_types.h"
 
-int atomic_compare_exchange(volatile atom_uint *ptr,
+
+int atomic_compare_exchange(atom_uint *ptr,
 									unsigned int *expected, unsigned int newval);
 
-atom_uint atomic_fetch_add(volatile atom_uint *ptr, unsigned int add_);
+atom_uint atomic_fetch_add(atom_uint *ptr, unsigned int add_);
 
-atom_uint ux_atomic_fetch_sub(volatile atom_uint *ptr, unsigned int sub_);
+atom_uint atomic_fetch_sub(atom_uint *ptr, unsigned int sub_);
 
-void atomic_clear_flag(volatile atom_uint *ptr);
+void atomic_clear_flag(atom_uint *ptr);
 
-int ux_atomic_compare_exchange_u64_impl(volatile atom_uint *ptr,
-									uint32 *expected, uint32 newval);
+
+
+atom_uint64 atomic_fetch_add64(atom_uint64 *ptr, UINT64 add_);
+
+atom_uint64 atomic_fetch_sub64(atom_uint64 *ptr, UINT64 sub_);				
+
+int atomic_compare_exchange64(atom_uint64 *ptr,
+									UINT64 *expected, UINT64 newval);
 #endif 

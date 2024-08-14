@@ -85,46 +85,42 @@ static PExprDataInfo ComputeBoolExprNode(PNode node, PExecState eState)
 {
     PMergerEntry mergerNode = (PMergerEntry)node;
     PSelectState pst = (PSelectState)eState->subPlanStateNode;
-    PExprDataInfo leftResult = NULL, rightResult = NULL;
+    ExprDataInfo leftResult = {0}, rightResult = {0};
     int result = 0;
-    int boolType = mergerNode->mergeType;       /* and,or */  
+    int boolType = mergerNode->mergeType;       /* and,or,not */  
 
     /* 递归获取结果 */
     if(NULL != mergerNode->lefttree)
     {
         ExecSelectQual(mergerNode->lefttree,eState);
         
-        /* leftResult saves in reslutExpreData, shift to leftExpreData. */
-        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->leftExpreData));
-        leftResult = pst->selectExpreData->leftExpreData;
+        leftResult = *(pst->selectExpreData->resultExpreData);
     }
 
     if(NULL != mergerNode->righttree)
     {
         ExecSelectQual(mergerNode->righttree,eState);
 
-        /* rightResult saves in reslutExpreData, shift to righExpreData. */
-        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->righExpreData));
-        rightResult = pst->selectExpreData->righExpreData;
+        rightResult = *(pst->selectExpreData->resultExpreData);
     }
 
     /* 计算结果 */
     switch(boolType)
     {
         case AND_EXPR:
-            if(getDataBool(leftResult) && getDataBool(rightResult))
+            if(getDataBool(&leftResult) && getDataBool(&rightResult))
                 result = 1;
             else 
                 result = 0;
         break;
         case OR_EXPR:
-            if(getDataBool(leftResult) || getDataBool(rightResult))
+            if(getDataBool(&leftResult) || getDataBool(&rightResult))
                 result = 1;
             else 
                 result = 0;
         break;
         case NOT_EXPR:
-            result = getDataBool(leftResult) ? 0 : 1;
+            result = getDataBool(&leftResult) ? 0 : 1;
         break;
         default:
             hat_error("bool expr not support (%d)", boolType);
@@ -143,7 +139,7 @@ static PExprDataInfo ComputeExpreNode(PNode node, PExecState eState)
 {
     PSelectState pst = (PSelectState)eState->subPlanStateNode;
     PExprEntry simpleExprNode = (PExprEntry)node;
-    PExprDataInfo leftvalue = NULL, rightvalue = NULL, tmpExpr = NULL;
+    ExprDataInfo leftvalue = {0}, rightvalue = {0};
     int exprType = simpleExprNode->op;
     PExprDataInfo result = 0;
 
@@ -152,27 +148,21 @@ static PExprDataInfo ComputeExpreNode(PNode node, PExecState eState)
     {
         ProcessQualExprNode(simpleExprNode->lefttree, eState);
 
-        /*
-        * leftValue is resultExpreData, switch to leftExpreData;
-        */
-        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->leftExpreData));
-        leftvalue = pst->selectExpreData->leftExpreData;
+        /* result is save to local. */
+        leftvalue = *(pst->selectExpreData->resultExpreData);
     }
 
     if(NULL != simpleExprNode->righttree)
     {
         ProcessQualExprNode(simpleExprNode->righttree, eState);
 
-        /*
-        * rightvalue is resultExpreData, switch to rightExpreData;
-        */
-        SwitchToResultExpreData(&(pst->selectExpreData->resultExpreData), &(pst->selectExpreData->righExpreData));
-        rightvalue = pst->selectExpreData->righExpreData;
+        /* result is save to local. */
+        rightvalue = *(pst->selectExpreData->resultExpreData);
     }
     
 
     /* 计算表达式结果，调用类型通用计算函数 */
-    result = ComputeExpr(leftvalue, rightvalue, pst->selectExpreData->resultExpreData, exprType);
+    result = ComputeExpr(&leftvalue, &rightvalue, pst->selectExpreData->resultExpreData, exprType);
 
     return result;
 }
@@ -255,7 +245,7 @@ static PExprDataInfo GetExprDataColumnValue(PNode node, PExecState eState)
     }    
 
     exprValue = pst->selectExpreData->resultExpreData;
-    TranslateRawColumnData(colData, columnRefNode, exprValue->data);
+    TranslateRawColumnData(colData, columnRefNode, &exprValue->data);
 
     exprValue->type = columnRefNode->vt;
     exprValue->size = colData->size;       
@@ -278,7 +268,7 @@ static PExprDataInfo GetExprDataConstValue(PNode node, PExecState eState)
 
     exprValue = pst->selectExpreData->resultExpreData;
     exprValue->type = pcv->vt;
-    memcpy(exprValue->data , &(pcv->val), sizeof(Data));
+    memcpy(&exprValue->data , &(pcv->val), sizeof(Data));
     exprValue->size = -1;       
 
     if(pcv->isnull)

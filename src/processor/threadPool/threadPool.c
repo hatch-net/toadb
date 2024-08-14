@@ -100,7 +100,7 @@ PThreadWorkerInfo CreeateWorkerThread(int index)
     {
         return NULL;
     }
-    worker->tw_threadid = (unsigned int)threadId;
+    worker->tw_threadid = (unsigned long)threadId;
     worker->tw_state = TW_IDLE;
 
     hat_debug1_threadpool("create thread %s succeed.", workerName);
@@ -109,15 +109,14 @@ PThreadWorkerInfo CreeateWorkerThread(int index)
 
 int DestoryWorkerThread(PThreadWorkerInfo workerInfo)
 {
-    int* ret = 0;
+    int *ret = 0;
 
     if(NULL == workerInfo)
         return 0;
     
     if(workerInfo->tw_threadid > 0)
     {
-        pthread_join((pthread_t)&workerInfo->tw_threadid, (void **)&ret);
-        hat_log("thread %u exit (%d) ", workerInfo->tw_id, *ret);
+        pthread_join((pthread_t)workerInfo->tw_threadid, (void**)&ret);
     }
 
     DestorySem(workerInfo->taskIdleLock.name, &workerInfo->taskIdleLock);
@@ -125,22 +124,32 @@ int DestoryWorkerThread(PThreadWorkerInfo workerInfo)
     return 0;
 }
 
-int StopThreadPool()
+void StopThreadPool()
 {
     int index = 0;
     if(NULL == ProcessWorkerThreadInfo)
-        return 0;
+        return ;
 
-    for(; index < ProcessWorkerThreadInfo->threadListNum - 1; index ++)
+    hat_log("StopThreadPool Begin ... ");
+    for(index = 0; index < ProcessWorkerThreadInfo->threadListNum ; index ++)
     {
-        ShutDownWorkerThread(ProcessWorkerThreadInfo->workerInfoList[index]);
+        ShutDownWorkerThreadImmidately(ProcessWorkerThreadInfo->workerInfoList[index]);
+        PostSem(&(ProcessWorkerThreadInfo->workerInfoList[index]->taskIdleLock));
+    }
 
+    hat_log("Stop all thread ... ");
+
+    for(index = 0; index < ProcessWorkerThreadInfo->threadListNum ; index ++)
+    {
         DestoryWorkerThread(ProcessWorkerThreadInfo->workerInfoList[index]);
     }
+    hat_log("waiting thead ... ");
 
     SMemFree(ProcessWorkerThreadInfo);
     ProcessWorkerThreadInfo = NULL;
-    return 0;
+
+    hat_log("StopThreadPool end... ");
+    return ;
 }
 
 int ShutDownWorkerThread(PThreadWorkerInfo workerInfo)
@@ -151,7 +160,7 @@ int ShutDownWorkerThread(PThreadWorkerInfo workerInfo)
         return -1;
     
     hat_log("worker-%d shutdown... ", workerInfo->tw_id);
-    workerInfo->tw_id = -1;
+    workerInfo->tw_state = TW_STOPING;
     
     return 0;
 }
@@ -180,6 +189,17 @@ int IsIdleWorker(PThreadWorkerInfo worker)
     }
 
     return 0;
+}
+
+/* 
+ * This is called between process task begin and finishing.
+ */
+int GetCurrentWorkerIndex()
+{
+    if(NULL == workerContextInfo)
+        return -1;
+    
+    return workerContextInfo->tw_id;
 }
 
 int GetIdleWorker()
@@ -258,10 +278,10 @@ static int FinishWorkerThread(PThreadWorkerInfo workerInfo)
 static void* threadEntry(void *arg)
 {
     PThreadWorkerInfo workerInfo = (PThreadWorkerInfo)arg;
-    int ret = 0;
+    int ret = -1;
 
     if(NULL == workerInfo)
-        return NULL;
+        return PTHREAD_CANCELED;
     
     workerContextInfo = workerInfo;
 
@@ -279,6 +299,11 @@ static void* threadEntry(void *arg)
             break;
         }
 
+        if(TW_STOPING == workerContextInfo->tw_state)
+        {
+            hat_log("worker %d task stoped.", workerContextInfo->tw_id);
+            break;
+        }
         hat_log("worker %d task running.", workerContextInfo->tw_id);
 
         BeginWorkerThread(workerContextInfo);

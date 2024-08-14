@@ -10,6 +10,7 @@
 #include "tables.h"
 #include "buffer.h"
 #include "portal.h"
+#include "snapshot.h"
 
 typedef struct RowDataPosition
 {
@@ -86,6 +87,7 @@ typedef struct ScanState
     PColumnDef columnDefArr;
     PTableRowData currentRowData;     /* rowdata is scaned of current this scanner, used to release resource. */
 
+    PSnapShotInfo snapshot;
 }ScanState, *PScanState;
 
 

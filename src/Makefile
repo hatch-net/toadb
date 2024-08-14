@@ -59,11 +59,11 @@ builddir = $(topdir)/build
 DEFINES += -DSTORAGE_FORMAT_PAX
 DEFINES += ${DEBUGDEF}
 LDFLAGS += -lpthread
-DEBUG_FLAGS = -g
+#DEBUG_FLAGS = -g
 ##########################################		
 		
 CC = gcc
-#CFLAGS += -O2
+CFLAGS += -O2
 #CFLAGS += -Werror
 CFLAGS += ${INC}
 CFLAGS += ${DEFINES}

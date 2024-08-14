@@ -51,7 +51,7 @@ DataTypeProcs floatDataTypeProcEntry =
 
 static int getfloatSize(PExprDataInfo value)
 {
-    if((NULL == value) || (NULL == value->data))
+    if(NULL == value)
         return -1;
     
     /* TODO: 2024/1/23 double the same as float   */
@@ -66,8 +66,8 @@ static int getfloatSize(PExprDataInfo value)
 */
 static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    float first = leftvalue->data->fData;
-    float seconde = rightvalue->data->fData;
+    float first = leftvalue->data.fData;
+    float seconde = rightvalue->data.fData;
     int result = HAT_FALSE;
 
     if((first - seconde) > FLOAT_EPSILON)
@@ -81,8 +81,8 @@ static PExprDataInfo floatGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo
 */
 static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    float first = leftvalue->data->fData;
-    float seconde = rightvalue->data->fData;
+    float first = leftvalue->data.fData;
+    float seconde = rightvalue->data.fData;
     int result = HAT_FALSE;
 
     first -= seconde;
@@ -97,8 +97,8 @@ static PExprDataInfo floatGreaterEqualOperator(PExprDataInfo leftvalue, PExprDat
 */
 static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    float first = leftvalue->data->fData;
-    float seconde = rightvalue->data->fData;
+    float first = leftvalue->data.fData;
+    float seconde = rightvalue->data.fData;
     int result = HAT_FALSE;
 
     first -= seconde;
@@ -113,8 +113,8 @@ static PExprDataInfo floatEqualOperator(PExprDataInfo leftvalue, PExprDataInfo r
 */
 static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    float first = leftvalue->data->fData;
-    float seconde = rightvalue->data->fData;
+    float first = leftvalue->data.fData;
+    float seconde = rightvalue->data.fData;
     int result = HAT_FALSE;
 
     first -= seconde;
@@ -129,8 +129,8 @@ static PExprDataInfo floatLessEqualOperator(PExprDataInfo leftvalue, PExprDataIn
 */
 static PExprDataInfo floatLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    float first = leftvalue->data->fData;
-    float seconde = rightvalue->data->fData;
+    float first = leftvalue->data.fData;
+    float seconde = rightvalue->data.fData;
     int result = HAT_FALSE;
 
     first -= seconde;

@@ -49,7 +49,7 @@ DataTypeProcs charDataTypeProcEntry =
 
 static int charGetSize(PExprDataInfo value)
 {
-    if((NULL == value) || (NULL == value->data))
+    if(NULL == value)
         return -1;
     
     value->size = sizeof(char);
@@ -59,8 +59,8 @@ static int charGetSize(PExprDataInfo value)
 static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = sizeof(char);
 
     if(hat_strncmp(str1,str2, len) > 0)
@@ -74,8 +74,8 @@ static PExprDataInfo charGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo 
 static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = sizeof(char);
 
     if(hat_strncmp(str1,str2, len) >= 0)
@@ -89,8 +89,8 @@ static PExprDataInfo charGreaterEqualOperator(PExprDataInfo leftvalue, PExprData
 static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = sizeof(char);
 
     if(hat_strncmp(str1,str2, len) == 0)
@@ -104,8 +104,8 @@ static PExprDataInfo charEqualOperator(PExprDataInfo leftvalue, PExprDataInfo ri
 static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = sizeof(char);
 
     if(hat_strncmp(str1,str2, len) <= 0)
@@ -119,8 +119,8 @@ static PExprDataInfo charLessEqualOperator(PExprDataInfo leftvalue, PExprDataInf
 static PExprDataInfo charLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = sizeof(char);
 
     if(hat_strncmp(str1,str2, len) < 0)

@@ -1,6 +1,15 @@
 /*
  *	toadb executor
- * Copyright (C) 2023-2023, senllang
+ * Copyright (c) 2023-2024 senllang
+ * 
+ * toadb is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ * http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
 */
 
 #include <stdio.h>
@@ -16,6 +25,7 @@
 #include "public.h"
 #include "memStack.h"
 #include "servprocess.h"
+#include "transactionControl.h"
 
 void ExecutorMain(PList list)
 {
@@ -97,8 +107,13 @@ void ExecutorStart(PNode subPlan, PExecState *eState)
     *eState = (PExecState)pMem;
     (*eState)->portal = GetServPortal();
     (*eState)->plan = subPlan;
+    (*eState)->snapshot = GetServSnapShot();
 
     InitPortal((*eState)->portal);
+
+    /* get snapshot */
+    GenerateSnapshot();
+
     InitExecState(*eState);
     hat_debugExcutorPathSelect("excutor ready finish.");
 }
@@ -110,7 +125,7 @@ void ExecutorEnd(PExecState eState)
 {
     if(NULL == eState)
         return ;
-        
+    
     EndExecState(eState);
     hat_debugExcutorPathSelect("excutor clean finish.");
 }
@@ -161,7 +176,7 @@ PTableRowData ExecNodeProc(PExecState eState)
 
     PPlanStateNode node = (PPlanStateNode)eState->subPlanStateNode;
 
-    if(NULL != node)
+    if((NULL != node) && (NULL != node->execProcNode))
     {        
         hat_debugExcutorPathSelect("excutor node type:%d.", node->type);
         rowData = node->execProcNode(eState);

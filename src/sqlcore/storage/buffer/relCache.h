@@ -63,7 +63,7 @@ char * CreateDictionaryItem(int size);
 #define StartExtensionTbl(tbl) StartExtensionLock(tbl, __FUNCTION__, __LINE__)
 #define EndExtensionTbl(tbl) EndExtensionLock(tbl, __FUNCTION__, __LINE__)
 
-void StartExtensionLock(PTableList tblInfo, char *fun, int line);
-void EndExtensionLock(PTableList tblInfo, char *fun, int line);
+void StartExtensionLock(PTableList tblInfo, const char *fun, int line);
+void EndExtensionLock(PTableList tblInfo, const char *fun, int line);
 
 #endif 

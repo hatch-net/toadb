@@ -260,6 +260,10 @@ static void MemMangerInsert(void *ptr, int size)
 PMemContextNode MemMangerSwitchContext(PMemContextNode oldContext)
 {
     PMemContextNode old = g_CurrentContext;
+
+    if(oldContext == g_CurrentContext)
+        return old;
+        
     g_CurrentContext = oldContext;
 
     hat_debug("currentContext:%p.", g_CurrentContext);

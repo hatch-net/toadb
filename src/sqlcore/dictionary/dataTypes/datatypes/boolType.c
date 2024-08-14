@@ -44,7 +44,7 @@ DataTypeProcs boolDataTypeProcEntry =
 
 static int getboolSize(PExprDataInfo value)
 {
-    if((NULL == value) || (NULL == value->data))
+    if(NULL == value)
         return -1;
     
     /* memory store as integer  */
@@ -59,8 +59,8 @@ static int getboolSize(PExprDataInfo value)
 */
 static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first == seconde)
@@ -74,8 +74,8 @@ static PExprDataInfo boolEqualOperator(PExprDataInfo leftvalue, PExprDataInfo ri
 */
 static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first != seconde)
@@ -89,8 +89,8 @@ static PExprDataInfo boolNotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo
 */
 static PExprDataInfo boolValueOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first != seconde)

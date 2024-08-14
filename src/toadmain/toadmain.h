@@ -15,6 +15,8 @@
 #ifndef HAT_TOADMAIN_H_H
 #define HAT_TOADMAIN_H_H
 
+#include "xtid.h"
+
 /* 
  * this macro must be less portal buffer len. 
  * backend service mode, it represent the share memory size. 
@@ -51,6 +53,7 @@ typedef struct SysGlobalContext
 {
     int fd;
     SysGlobalData globalData;
+    PTransactionIDInfo transInfo;
 }SysGlobalContext, *PSysGlobalContext;
 
 int toadbMain(int argc, char *argv[]) ;
@@ -69,7 +72,7 @@ int SendServerResult(char *result);
 int SendFinishAndNotifyClient();
 
 int InitToad();
-int ExitToad();
+void ExitToad();
 
 int args_opt(int argc, char *argv[]);
 
@@ -77,7 +80,7 @@ int checkDataDir();
 void ShowToadbInfo();
 
 int InitSysGlobal();
-int DestroySysGlobal();
+int RecordSysGlobal();
 int ReadSysGlobalData(PSysGlobalContext sysContext);
 int WriteSysGlobalData(PSysGlobalContext sysContext);
 int GetAndIncObjectId();

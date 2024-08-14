@@ -10,6 +10,8 @@
 #include "buffer.h"
 #include "node.h"
 
+
+
 PTableRowData ValuesFormRowData(PTableMetaInfo tblMeta, PNode targetList, PNode valueList);
 
 PRowColumnData TransformConstValueRowData(PConstValue constValue, PColumnDefInfo colDef, int attrIndex);

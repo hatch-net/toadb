@@ -58,6 +58,30 @@ typedef struct UpdateStmt
 	List *whereList;
 }UpdateStmt, *PUpdateStmt;
 
+typedef struct DeleteStmt
+{
+	NodeType type;
+	PNode relation;			/* rangvar */
+	List *fromList;
+	List *whereList;
+}DeleteStmt, *PDeleteStmt;
+
+typedef enum TransactionFlag
+{
+	TF_BEGIN,
+	TF_END,
+	TF_COMMIT,
+	TF_ROLLBACK,
+	TF_SAVEPOINT,
+	TF_UNKNOWN
+}TransactionFlag;
+
+typedef struct TransactionStmt
+{
+	NodeType type;
+	TransactionFlag transactionTag;
+}TransactionStmt, *PTransactionStmt;
+
 typedef struct AttrName
 {
 	NodeType type;
@@ -210,6 +234,13 @@ typedef struct RangeVar
 	char	   *relname;
 	Alias	   *alias;
 } RangeVar, *PRangeVar;
+
+typedef struct FunctionClause
+{
+	NodeType	type;
+	char	   *functionName;
+	Alias	   *alias;
+} FunctionClause, *PFunctionClause;
 
 
 /* 根据列名获取在targetlist中的序号 */

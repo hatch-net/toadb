@@ -15,35 +15,18 @@
 #ifndef HAT_RWLOCK_H_H
 #define HAT_RWLOCK_H_H
 
-#include <pthread.h>  
-#include <unistd.h>  
-
-typedef enum RWLockMode 
-{
-    RWLock_NULL,
-    RWLock_READ,
-    RWLock_WRITE
-}RWLockMode;
-
-typedef struct RWLockInfo 
-{
-    pthread_rwlock_t rwlock; 
-    RWLockMode lockMode;
-    int rlockCnt;
-}RWLockInfo, *PRWLockInfo;
 
 
-int InitRWLock(PRWLockInfo lock);
-
-int AcquireRWLock(PRWLockInfo lock, RWLockMode mode) ;
-int ReleaseRWLock(PRWLockInfo lock, RWLockMode mode);
+#include "locallock.h"
 
 
-#define AcquireLock(lock, mode) AcquireRWLockEx(lock, mode, __FUNCTION__, __LINE__)
-#define ReleaseLock(lock, mode) ReleaseRWLockEx(lock, mode, __FUNCTION__, __LINE__)
 
-int AcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, char *fun, int line);
-int ReleaseRWLockEx(PRWLockInfo lock, RWLockMode mode, char *fun, int line);
+
+int InitRWLock(PRWLockInfo lock, LockBranch branch);
+
+int TryAcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, const char *fun, int line);
+int AcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, const char *fun, int line);
+int ReleaseRWLockEx(PRWLockInfo lock, RWLockMode mode, const char *fun, int line);
 
 int DestroyRWLock(PRWLockInfo lock);
 

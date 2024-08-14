@@ -21,9 +21,9 @@
 #include <stdlib.h>
 
 #define hat_debug1_memPool(...)   
-#define hat_debug1(...)  
+#define hat_debug1(...)   
 #define hat_debug(...)  
-//#define hat_debug1_memPool(...)  log_report(LOG_DEBUG, __VA_ARGS__) 
+//  #define hat_debug1_memPool(...)  log_report(LOG_DEBUG, __VA_ARGS__) 
 
 /* 内存上下文管理 */
 static PMemPoolManagerContext g_memPoolMangerContext = NULL;
@@ -137,7 +137,6 @@ static int AddPoolFreeList(PMemPageInfo mPage)
         return -1;
     }
 
-    /* TODO: test */
     MM_FreeMem(mPage);
     return 0;
 
@@ -427,15 +426,14 @@ static int ReleaseToMemPage(PMemBlock memb)
     DList *header = NULL;
     int ret = 0;
 
-    hat_debug("release memPage %p memblock %p mem %p leve %d-%d", 
-                    memb->memPage, memb, memb->ptr, memPage->releaseSize, memb->size);
-
     if(NULL == memPage)
     {
         hat_error("mempage pointer is null. memblock:%p", memb);
         return -1;
     }
-
+    
+    hat_debug1("release memPage %p memblock %p mem %p leve %d-%d", 
+                    memb->memPage, memb, memb->ptr, memPage->releaseSize, memb->size);
     memPage->releaseSize += memb->size;
 
     if(IsMemPageEmpty(memPage))

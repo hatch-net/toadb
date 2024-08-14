@@ -39,7 +39,7 @@
  */
 
 /* 当开关打开时，打印语法树，解析树，计划树 */
-//#define PARSER_TREE_PRINT 1
+// #define PARSER_TREE_PRINT 1
 
 /* 
  * 数据库标识符是否区分大小写 
@@ -64,6 +64,8 @@ extern int pageNum;
 extern int servPort;
 extern char servIP[];
 
+/* maxmum num of task threads */
+extern int maxThreadWorkerNum;
 
 /* 
  * logger config

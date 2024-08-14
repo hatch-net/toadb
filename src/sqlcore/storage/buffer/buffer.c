@@ -26,6 +26,8 @@
 #include "resourceMgr.h"
 #include "hashtab.h"
 #include "atom.h"
+#include "transactionControl.h"
+#include "snapshot.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -393,7 +395,7 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         if (NULL == page)
             break;
 
-        LockPage(page, BUF_READ);
+        LockPage(page, BUF_WRITE);           // 11
 
         /* first page is original data type. */
         if((firstpage == NULL) && (PAGE_UNDO == pageType))
@@ -406,12 +408,12 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         if (GET_PAGE_TYPE(page->header.pageType) != pageType)
         {
             /* todo: bufferpool */
-            UnLockPage(page, BUF_READ);
+            UnLockPage(page, BUF_WRITE);
             ReleasePage(page);
             
             if(NULL != firstpage)
             {
-                UnLockPage(firstpage, BUF_READ);
+                UnLockPage(firstpage, BUF_WRITE);
                 ReleasePage(firstpage);
             }
 
@@ -425,10 +427,11 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
         /* freespace check */
         if (HasFreeSpace(page, size))
         {
-            UnLockPage(page, BUF_READ);
+            UnLockPage(page, BUF_WRITE);
+
             if(NULL != firstpage)
             {
-                UnLockPage(firstpage, BUF_READ);
+                UnLockPage(firstpage, BUF_WRITE);
                 ReleasePage(firstpage);
             }
             return page;
@@ -465,7 +468,7 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
             /* first page is not release, which is updated when extension new page. */
             if(page != firstpage)
             {
-                UnLockPage(page, BUF_READ);
+                UnLockPage(page, BUF_WRITE);
                 ReleasePage(page);
             }
         }
@@ -482,9 +485,9 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
      */
     if ((op == PAGE_NEW) && (NULL == extpage))
     {
-        StartExtensionTbl(tblInfo);
+        StartExtensionTbl(tblInfo);                     //1  12
 
-        extpage = ExtensionTbl(tblInfo, 1, forkNum);
+        extpage = ExtensionTbl(tblInfo, 1, forkNum);  
         if(NULL == extpage)
         {
             EndExtensionTbl(tblInfo);
@@ -493,18 +496,11 @@ PPageDataHeader GetSpaceSpecifyPage(PTableList tblInfo, int size, PageOp op, For
 
         LockPage(extpage, BUF_WRITE);
         extpage->header.pageType = SET_PAGE_TYPE(extpage->header.pageType, pageType);
-        UnLockPage(extpage, BUF_WRITE);
     }
 
 EXT_NEW:
     if ((firstpage != NULL) && (extpage != NULL))
     {        
-        UnLockPage(firstpage, BUF_READ);
-
-        /* page is locked in order that avoid to dead lock.  */
-        LockPage(firstpage, BUF_WRITE);
-        LockPage(extpage, BUF_WRITE);
-
         extpage->header.pageType = SET_PAGE_TYPE(extpage->header.pageType, pageType);
 
         /* 指定块没有空间时，扩展一个块, 这里使用头插法。  */
@@ -522,17 +518,17 @@ EXT_NEW:
         /* todo, maybe set dirty flag only. */
         WritePage(tblInfo, firstpage, forkNum);
         
+        /* page is locked in order that avoid to dead lock.  */
         UnLockPage(extpage, BUF_WRITE);
+        EndExtensionTbl(tblInfo);
         UnLockPage(firstpage, BUF_WRITE);
 
-        EndExtensionTbl(tblInfo);
-        
         /* pre block of chain. */
         ReleasePage(firstpage);
     }
     else if(firstpage != NULL)
     {
-        UnLockPage(firstpage, BUF_READ);
+        UnLockPage(firstpage, BUF_WRITE);
 
         /* pre block of chain. */
         ReleasePage(firstpage);
@@ -661,7 +657,7 @@ static int FreeSpaceCheck(PScanPageInfo scanPageInfo, PTableRowData insertdata)
     return 0;
 }
 
-static int WriteRowOnePage(PTableList tblInfo, PPageDataHeader page, PRowData row)
+int WriteRowOnePage(PTableList tblInfo, PPageDataHeader page, PRowData row)
 {
     int ret = 0;
 
@@ -683,10 +679,14 @@ static int WriteRowOnePage(PTableList tblInfo, PPageDataHeader page, PRowData ro
     return ret;
 }
 
+/* 
+ * One Row data insert into all member pages of this group.
+ */
 int InsertRowDataWithGroup(PTableList tblInfo, PTableRowData insertdata, PScanPageInfo scanPageInfo)
 {
     PPageDataHeader *pageList = NULL;
     PRowData rowData = NULL;
+    TupleHeader tupleHeaderData = {0};
     int ColNum = 0;
     int ret = 0;
 
@@ -704,17 +704,23 @@ int InsertRowDataWithGroup(PTableList tblInfo, PTableRowData insertdata, PScanPa
         goto ENERET;
     }
 
+    ComputeXminTupleHeader(&tupleHeaderData);
+
     /* insert rows into pages. */
     rowData->rowsData.num = 1;
+
     for(ColNum = 0; ColNum < insertdata->num; ColNum++)
     {
         rowData->rowsData.columnData[0] = insertdata->columnData[ColNum];
+
+        rowData->rowsData.columnData[0]->headerData = tupleHeaderData;
         rowData->rowsData.size = insertdata->columnData[ColNum]->size;
 
         ret = WriteRowOnePage(tblInfo, pageList[ColNum], rowData);
     }
 
     ret = ESTAT_SUCESS;
+    
 ENERET:
     UnLockGroupPages(scanPageInfo, insertdata->num);
     return ret;
@@ -733,9 +739,9 @@ int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowDat
 {
     int ret = 0;
 
-    LockPage(page, BUF_WRITE);
+    //LockPage(page, BUF_WRITE);
     ret = WriteRowOnePage(tblInfo, page, row);
-    UnLockPage(page, BUF_WRITE);
+    //UnLockPage(page, BUF_WRITE);
 
     return ret;
 }
@@ -762,12 +768,12 @@ int WriteRowDataOnly(PTableList tblInfo, PPageDataHeader page, PRowData row, PIt
 {
     int ret = 0;
 
-    LockPage(page, BUF_WRITE);
+    //LockPage(page, BUF_WRITE);
     ret = ReplaceRowData(page, row, oldItem);
 
     /* page buffer write to table file. */
     WritePage(tblInfo, page, MAIN_FORK);
-    UnLockPage(page, BUF_WRITE);
+    //UnLockPage(page, BUF_WRITE);
 
     return ret;
 }
@@ -1042,7 +1048,7 @@ INIT_TAG:
         unPinBuffer(bufferPool, bufferId);
         UnLockBufDesc(&bufferPool->bufferDesc[bufferId], BUF_WRITE);
 
-        entryValue = GetEntryValue(hashEntry);
+        entryValue = (PBufferPoolHashValue)GetEntryValue(hashEntry);
         bufferId = entryValue->bufferId;
 
         hat_bufpool_debug("insert(find) hash entry:%p bufid:%d tag(%d-%d-%d)", 
@@ -1989,6 +1995,7 @@ PRowColumnData GetRowDataFromPageEx(PTableList tblInfo, PSearchPageInfo searchIn
             hat_bufcontext_debug("search item, found valid one.");
 
             UnLockPage(page, BUF_READ);
+
             return colData;
         }
 
@@ -2133,8 +2140,7 @@ int ReleaseAllResourceOwner()
     return ret;
 }
 
-
-int LockBuffer(PPageDataHeader page, int mode)
+int LockBufferEx(PPageDataHeader page, int mode, const char *fun, int line)
 {
     int ret = 0;
     PBufferDesc desc = NULL;
@@ -2143,11 +2149,11 @@ int LockBuffer(PPageDataHeader page, int mode)
         return -1;
 
     desc = GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page);
-    ret = LockBufDesc(desc, (BufferLockMode)mode);
+    ret = LockBufferDescEx(desc, (BufferLockMode)mode, fun, line);
     return ret;
 }
 
-int UnLockBuffer(PPageDataHeader page, int mode)
+int UnLockBufferEx(PPageDataHeader page, int mode, const char *fun, int line)
 {
     int ret = 0;
     PBufferDesc desc = NULL;
@@ -2156,18 +2162,6 @@ int UnLockBuffer(PPageDataHeader page, int mode)
         return -1;
 
     desc = GetBufferDesc(GetBufferPoolContext(), (PBufferElement)page);
-    ret = UnLockBufDesc(desc, (BufferLockMode)mode);
+    ret = UnlockBufferDescEx(desc, (BufferLockMode)mode, fun, line);
     return ret;
-}
-
-int LockBufferEx(PPageDataHeader page, int mode, char *fun, int line)
-{
-    hat_buflock_debug("LockBufferEx page %p mode %d [%s][%d]", page, mode, fun, line);
-    return LockBuffer(page, mode);
-}
-
-int UnLockBufferEx(PPageDataHeader page, int mode, char *fun, int line)
-{
-    hat_buflock_debug("UnLockBufferEx page %p mode %d [%s][%d]", page, mode, fun, line);
-    return UnLockBuffer(page, mode);
 }

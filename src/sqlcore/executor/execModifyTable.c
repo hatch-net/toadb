@@ -19,6 +19,7 @@
 #include "execNode.h"
 #include "queryNode.h"
 #include "bufferPool.h"
+#include "transactionControl.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,6 +107,9 @@ int pax_ExecModifyTable(PExecState eState, PTableList tblInfo, PTableRowData row
         case T_UpdateStmt:
             ret = pax_ExecUpdate(eState, tblInfo, rowsdata);
         break;
+        case T_DeleteStmt:
+            ret = pax_ExecDelete(eState, tblInfo, rowsdata);
+        break;
         default:
             hat_log("unsuport node type %d of PAX storage . ", type);
             ret = -1;
@@ -136,7 +140,9 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
     PPageDataHeader undoPage = NULL;
     PRowData newRowData = NULL;
     PItemData oldItem = NULL;
-    
+    TupleHeader newTupHeader = {0};
+    TupleUpdateResult tuResult = TU_UNKNOW;
+
     int attrIndex = 0;
     int rowSize = 0;
     int oldRowSize = 0;
@@ -163,7 +169,7 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
         originPage = GetPageByIndex(tblInfo, attrDataPos->headItem.pageno.pageno, MAIN_FORK);
         if(NULL == originPage)
         {
-            hat_error("get undo page error, no free space rest of disk. ");
+            hat_error("get origin page error, no free space rest of disk. ");
             return -1;
         }
 
@@ -175,11 +181,24 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
             return -1;
         }
 
+        LockPage(originPage, BUF_WRITE);
+        LockPage(undoPage, BUF_WRITE);
+        
+        tuResult = TupleUpdateSatisfy(&(oldRowData->rowsData.columnData[attrIndex]->headerData));
+        if(TU_OK != tuResult)
+        {
+            /* no update */
+            ret = -1;
+            break;
+        }
+
         /* old column rowdata */
         newRowData->rowsData.num = 1;
         newRowData->rowsData.columnData[0] = oldRowData->rowsData.columnData[attrIndex];
         newRowData->rowsData.size = newRowData->rowsData.columnData[0]->size;
         oldRowSize = newRowData->rowsData.size;
+
+        ComputeXmaxTupleHeader(&newTupHeader, &newRowData->rowsData.columnData[0]->headerData);
 
          /* oldtuple is copied to undo page. */    
         ret = WriteRowItemDataWithHeader(tblInfo, undoPage, newRowData);
@@ -189,8 +208,10 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
         }
 
         /* new column rowdata */
-        newRowData->rowsData.columnData[0] = attrDataPos->rowData.columnData[attrIndex];
+        newTupHeader.undo = newRowData->rowPos;
+        newRowData->rowsData.columnData[0] = attrDataPos->rowData.columnData[0];
         newRowData->rowsData.size = newRowData->rowsData.columnData[0]->size;
+        newRowData->rowsData.columnData[0]->headerData = newTupHeader;
 
         /* insert new tuple to page, inplace or new other place. */
         if(newRowData->rowsData.size <= oldRowSize)
@@ -212,22 +233,24 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
             if(newRowPage->header.pageNum == originPage->header.pageNum)
             {
                 /* write only data other place of the same page. */
-                LockPage(newRowPage, BUF_WRITE);
+                //LockPage(newRowPage, BUF_WRITE);
 
                 oldItem = GET_ITEM(attrDataPos->headItem.itemOffset, newRowPage);
                 oldItem->offset = newRowPage->dataEndOffset - rowSize;
                 newRowPage->dataEndOffset = oldItem->offset;
                 ret = WriteRowDataOnly(tblInfo, newRowPage, newRowData, oldItem);
                 
-                UnLockPage(newRowPage, BUF_WRITE);
+                //UnLockPage(newRowPage, BUF_WRITE);
             }
             else
             {
+                LockPage(newRowPage, BUF_WRITE);
+
                 /* write new item and data in the extension page. */
                 ret = WriteRowItemDataWithHeader(tblInfo, newRowPage, newRowData);
 
                 /* old item chang to redirect flag. */
-                LockPage(originPage, BUF_WRITE);
+                //LockPage(originPage, BUF_WRITE);
 
                 oldItem = GET_ITEM(attrDataPos->headItem.itemOffset, originPage);
                 oldItem->len |= ITEM_REDIRECT_MASK;
@@ -235,29 +258,33 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
                 oldItem->len = SetItemSize(oldItem->len, newRowData->rowPos.itemIndex);
                 WritePage(tblInfo, originPage, MAIN_FORK);
 
-                UnLockPage(originPage, BUF_WRITE);
+                UnLockPage(newRowPage, BUF_WRITE);
+                //UnLockPage(originPage, BUF_WRITE);
             }
         }  
 
         /* every column will be release resource */
-        if(NULL != undoPage)
-        {
-            ReleasePage(undoPage);
-            undoPage = NULL;
-        }
-
-        if(NULL != originPage)
-        {
-            ReleasePage(originPage);
-            originPage  = NULL;
-        }
-            
         if(NULL != newRowPage)
         {
+            UnLockPage(newRowPage, BUF_WRITE);
             ReleasePage(newRowPage);
             newRowPage = NULL;
         }
 
+        if(NULL != undoPage)
+        {
+            UnLockPage(undoPage, BUF_WRITE);
+            ReleasePage(undoPage);
+            undoPage = NULL;
+        }
+        
+        if(NULL != originPage)
+        {
+            UnLockPage(originPage, BUF_WRITE);
+            ReleasePage(originPage);
+            originPage  = NULL;
+        }
+        
         /* some error ocur, then exited. */
         if(ret < 0)
         {
@@ -265,6 +292,28 @@ int pax_ExecUpdate(PExecState eState, PTableList tblInfo, PTableRowData updateDa
         }
     }
     
+    /* every column will be release resource */
+    if(NULL != newRowPage)
+    {
+        UnLockPage(newRowPage, BUF_WRITE);
+        ReleasePage(newRowPage);
+        newRowPage = NULL;
+    }
+
+    if(NULL != undoPage)
+    {
+        UnLockPage(undoPage, BUF_WRITE);
+        ReleasePage(undoPage);
+        undoPage = NULL;
+    }
+        
+    if(NULL != originPage)
+    {
+        UnLockPage(originPage, BUF_WRITE);
+        ReleasePage(originPage);
+        originPage  = NULL;
+    }
+
     return ret;
 }
 
@@ -384,7 +433,12 @@ PTableRowData ExecTableModifyTbl(PExecState eState)
         if(NULL == rowData)
             break;
 
-        /* parent target rowdata. */
+        /* 
+         * old row data, which is projected by parent target rowdata,
+         * and without position infomation. 
+         * Here, eState->scanRowDataLeft is still sotred old row data, 
+         * which is before project, and with postion infomation.
+         */
         eState->scanRowDataRight = rowData;
 
         /* modify table data */
@@ -395,11 +449,16 @@ PTableRowData ExecTableModifyTbl(PExecState eState)
                 eState->subPlanNode = (PNode)plan;
                 opRet = ExecModifyTable(eState, tblInfo, rowData, T_InsertStmt);
             break;
+            
             case CMD_UPDATE:
                 eState->subPlanNode = (PNode)plan->rightplan;
                 eState->subPlanStateNode = (PNode)planState->right; 
 
-                /* excutor set list express. */
+                /* 
+                 * excutor set list express.
+                 * eState->scanRowDataLeft also store the result, 
+                 * which is new row data with postion infomation.
+                 */
                 newRowData = ExecNodeProc(eState);
                 if((NULL == newRowData) || (eState->retCode < ExecRetCode_SUC))
                 {
@@ -411,6 +470,28 @@ PTableRowData ExecTableModifyTbl(PExecState eState)
                 eState->subPlanNode = (PNode)plan;
                 opRet = ExecModifyTable(eState, tblInfo, newRowData, T_UpdateStmt);
             break;
+            
+            case CMD_DELETE:
+                eState->subPlanNode = (PNode)plan->rightplan;
+                eState->subPlanStateNode = (PNode)planState->right; 
+
+                /* 
+                 * excutor set list express.
+                 * eState->scanRowDataLeft also store the result, 
+                 * which is new row data with postion infomation.
+                 */
+                newRowData = ExecNodeProc(eState);
+                if((NULL == newRowData) || (eState->retCode < ExecRetCode_SUC))
+                {
+                    /* TODO: rollback transaction */
+                    break;
+                }
+
+                eState->subPlanStateNode = (PNode)planState;
+                eState->subPlanNode = (PNode)plan;
+                opRet = ExecModifyTable(eState, tblInfo, newRowData, T_DeleteStmt);
+            break;
+
             default:
                 return NULL;
             break;
@@ -435,5 +516,96 @@ PTableRowData ExecTableModifyTbl(PExecState eState)
 
     /* nothing will be return. */
     return NULL;
+}
+
+/* 
+ * update command excutor 
+ * updateDataPos is find real row with table file position, 
+ * and replace attribute value with set value already.
+ * 
+ * steps:
+ * first, move old tuple to undo page, as insert command.
+ * second, insert new tuple to group the same as old tuple.
+ * NOTE: only support pax storage type.
+ */
+int pax_ExecDelete(PExecState eState, PTableList tblInfo, PTableRowData delDataPos)
+{
+    PModifyTblState planState = (PModifyTblState)eState->subPlanStateNode;
+    PTableRowDataWithPos rowDataPos = (PTableRowDataWithPos)delDataPos;
+
+    PAttrDataPosition attrDataPos = NULL;
+    PPageDataHeader originPage = NULL;
+    TupleHeader newTupHeader = {0};
+    PRowData newRowData = NULL;
+    TupleUpdateResult tuResult = TU_UNKNOW;
+
+    int attrIndex = 0;
+    int ret = -1;
+
+    if(rowDataPos->num <= 0)
+    {
+        hat_error("no row to delete");
+        return -1;
+    }
+
+    /* 
+     * form new row data, with undo tuple version chain.
+     * pax storage type attrDataPos->rowData.num  always is 1.
+    */
+    newRowData = planState->scanState->scanPostionInfo->rowData;
+    newRowData->rowsData.num = 1;
+    
+    for(attrIndex = 0; attrIndex < rowDataPos->num; attrIndex++)
+    {
+        attrDataPos = rowDataPos->attrDataPos[attrIndex];
+
+        /* first use undo page. */
+        originPage = GetPageByIndex(tblInfo, attrDataPos->headItem.pageno.pageno, MAIN_FORK);
+        if(NULL == originPage)
+        {
+            hat_error("get origin page error, no free space rest of disk. ");
+            return -1;
+        }
+
+        LockPage(originPage, BUF_WRITE);
+
+        tuResult = TupleUpdateSatisfy(&(attrDataPos->rowData.columnData[0]->headerData));
+        if(TU_OK != tuResult)
+        {
+            ret = -1;
+            break;
+        }
+
+        newRowData->rowsData.columnData[0] = attrDataPos->rowData.columnData[0];
+        newRowData->rowsData.size = newRowData->rowsData.columnData[0]->size;
+        
+        ComputeXmaxTupleHeader(&newTupHeader, &newRowData->rowsData.columnData[0]->headerData);
+
+        /* oldtuple is copied to undo page. */    
+        ret = ReplaceRowData(originPage, newRowData, &(attrDataPos->headItem.itemData));
+        /* page buffer write to table file. */
+        WritePage(tblInfo, originPage, MAIN_FORK);
+
+        UnLockPage(originPage, BUF_WRITE);
+
+        ReleasePage(originPage);
+        originPage  = NULL;
+
+        /* some error ocur, then exited. */
+        if(ret < 0)
+        {
+            break;
+        }
+    }
+
+    if(NULL != originPage)
+    {
+        UnLockPage(originPage, BUF_WRITE);
+
+        ReleasePage(originPage);
+        originPage  = NULL;
+    }
+    
+    return ret;
 }
 

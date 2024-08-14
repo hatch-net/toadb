@@ -22,6 +22,7 @@ typedef enum WORKER_STATE
 {
     TW_IDLE,
     TW_RUNNING,
+    TW_STOPING,
     TW_UNKNOWN
 }WS_STATE;
 
@@ -37,9 +38,9 @@ typedef int (*TaskProcess)(PThreadTaskInfo taskInfo);
 typedef struct ThreadWorkerInfo 
 {
     volatile int tw_id;
-    unsigned int tw_threadid;
+    unsigned long tw_threadid;
     volatile int tw_state;
-
+    
     SemLock taskIdleLock;
     TaskProcess taskEntry;
     PMemContextNode ThreadMemoryContext;  /* init thread top memory */
@@ -61,7 +62,9 @@ typedef struct ThreadPoolInfo
 
 int InitThreadPool(int max, int init, int add);
 int DestoryWorkerThread(PThreadWorkerInfo workerInfo);
-int StopThreadPool();
+
+void StopThreadPool();
+int GetCurrentWorkerIndex();
 
 PThreadWorkerInfo CreeateWorkerThread(int index);
 int DestoryWorkerThread(PThreadWorkerInfo workerInfo);

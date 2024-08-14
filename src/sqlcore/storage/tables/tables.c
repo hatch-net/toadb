@@ -310,14 +310,16 @@ int GetObjectId()
 int InsertRowData(PPageDataHeader page, PRowData rowData, PItemData item)
 {
     PTableRowData tblRowData = NULL;
-    int size = 0;
+    //int size = 0;
 
     /* first rowdata insert into page buffer */
     tblRowData = &(rowData->rowsData);
-    size = sizeof(TableRowData);
+    //size = sizeof(TableRowData);
 
-    item->len = SetItemSize(item->len, size + tblRowData->size);
-    item->offset = page->dataEndOffset - size - tblRowData->size;
+    //item->len = SetItemSize(item->len, size + tblRowData->size);
+    //item->offset = page->dataEndOffset - size - tblRowData->size;
+    item->len = SetItemSize(item->len, tblRowData->size);
+    item->offset = page->dataEndOffset - tblRowData->size;
 
     ReplaceRowData(page, rowData, item);
 
@@ -342,7 +344,7 @@ int InsertItemData(PPageDataHeader page, PItemData item)
 /*
  * rowdata insert into page buffer.
  * and update item len.
- * data ==> TableRowData | columndata1 ... columndatan|
+ * data ==>  | columndata1 | columndata2 |... columndatan|
  * NOTE, oldlen >= newlen 
  */
 int ReplaceRowData(PPageDataHeader page, PRowData rowData, PItemData item)

@@ -57,7 +57,7 @@ typedef struct ExprDataInfo
 {
     int type;
     int size;       /* 当size=-1时，根据类型得到实际size；如果为null时，size为0 */
-    Data *data;
+    Data data;
 }ExprDataInfo, *PExprDataInfo;
 
 

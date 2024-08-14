@@ -81,7 +81,7 @@ DataTypeProcs intDataTypeProcEntry =
 
 static int getIntSize(PExprDataInfo value)
 {
-    if((NULL == value) || (NULL == value->data))
+    if(NULL == value) 
         return -1;
     
     value->size = sizeof(int);
@@ -95,8 +95,8 @@ static int getIntSize(PExprDataInfo value)
 */
 static PExprDataInfo int32GreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
     
     if(first > seconde)
@@ -110,8 +110,8 @@ static PExprDataInfo int32GreaterOperator(PExprDataInfo leftvalue, PExprDataInfo
 */
 static PExprDataInfo int32GreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first >= seconde)
@@ -125,8 +125,8 @@ static PExprDataInfo int32GreaterEqualOperator(PExprDataInfo leftvalue, PExprDat
 */
 static PExprDataInfo int32EqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first == seconde)
@@ -140,8 +140,8 @@ static PExprDataInfo int32EqualOperator(PExprDataInfo leftvalue, PExprDataInfo r
 */
 static PExprDataInfo int32LessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first <= seconde)
@@ -155,8 +155,8 @@ static PExprDataInfo int32LessEqualOperator(PExprDataInfo leftvalue, PExprDataIn
 */
 static PExprDataInfo int32LessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first < seconde)
@@ -170,8 +170,8 @@ static PExprDataInfo int32LessOperator(PExprDataInfo leftvalue, PExprDataInfo ri
 */
 static PExprDataInfo int32NotEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = HAT_FALSE;
 
     if(first != seconde)
@@ -185,7 +185,7 @@ static PExprDataInfo int32NotEqualOperator(PExprDataInfo leftvalue, PExprDataInf
 */
 static PExprDataInfo int32PositiveOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
+    int first = leftvalue->data.iData;
     int result = first >= 0 ? first : first * -1;
     
     return getDataInfo(&result, VT_INT, resExprData);
@@ -197,7 +197,7 @@ static PExprDataInfo int32PositiveOperator(PExprDataInfo leftvalue, PExprDataInf
 */
 static PExprDataInfo int32NegtiveOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
+    int first = leftvalue->data.iData;
     int result = first > 0 ? first * -1 : first;
     
     return getDataInfo(&result, VT_INT, resExprData);
@@ -209,8 +209,8 @@ static PExprDataInfo int32NegtiveOperator(PExprDataInfo leftvalue, PExprDataInfo
 */
 static PExprDataInfo int32PlusOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = first + seconde;
 
     return getDataInfo(&result, VT_INT, resExprData);
@@ -222,8 +222,8 @@ static PExprDataInfo int32PlusOperator(PExprDataInfo leftvalue, PExprDataInfo ri
 */
 static PExprDataInfo int32MinusOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = first - seconde;
 
     return getDataInfo(&result, VT_INT, resExprData);
@@ -235,8 +235,8 @@ static PExprDataInfo int32MinusOperator(PExprDataInfo leftvalue, PExprDataInfo r
 */
 static PExprDataInfo int32MultiOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = first * seconde;
 
     return getDataInfo(&result, VT_INT, resExprData);
@@ -249,8 +249,8 @@ static PExprDataInfo int32MultiOperator(PExprDataInfo leftvalue, PExprDataInfo r
 */
 static PExprDataInfo int32DivisionOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = first / seconde;
 
     return getDataInfo(&result, VT_INT, resExprData);
@@ -262,8 +262,8 @@ static PExprDataInfo int32DivisionOperator(PExprDataInfo leftvalue, PExprDataInf
 */
 static PExprDataInfo int32ModOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
-    int first = leftvalue->data->iData;
-    int seconde = rightvalue->data->iData;
+    int first = leftvalue->data.iData;
+    int seconde = rightvalue->data.iData;
     int result = first % seconde;
 
     return getDataInfo(&result, VT_INT, resExprData);

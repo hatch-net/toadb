@@ -140,6 +140,22 @@ OFFSET  {
 AS      {
             return AS;
         }
+BEGIN   {
+            return BEGIN_T;
+        }
+END     {
+            return END_T;
+        }
+ROLLBACK {
+            return ROLLBACK;
+        }
+COMMIT  {
+            return COMMIT;
+        }
+SAVEPOINT   {
+            return SAVEPOINT;
+        }
+
 {string}        {
                     int len = 0;
 

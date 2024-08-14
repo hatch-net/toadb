@@ -15,7 +15,7 @@
 #define HAT_BUFFER_POOL_H_H
 
 #include "tablecom.h"
-#include "rwlock.h"
+#include "locallock.h"
 
 typedef int BUFFERID;
 #define INVLID_BUFFER (-1)
@@ -101,13 +101,13 @@ typedef struct BufferPoolContext
 int InitBufferPool(PBufferPoolContext bufferPool, int pageNum);
 int ReleaseBufferPool(PBufferPoolContext bufferPool, int pageNum);
 
-int LockBufferDesc(PBufferDesc buffer, BufferLockMode mode);
-int UnlockBufferDesc(PBufferDesc buffer, BufferLockMode mode);
-
 #define LockBufDesc(buffer, mode) LockBufferDescEx(buffer, mode, __FUNCTION__, __LINE__)
+#define TryLockBufDesc(buffer, mode) TryLockBufferDescEx(buffer, mode, __FUNCTION__, __LINE__)
 #define UnLockBufDesc(buffer, mode) UnlockBufferDescEx(buffer, mode, __FUNCTION__, __LINE__)
-int LockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line);
-int UnlockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line);
+
+int LockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, const char *fun, int line);
+int TryLockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, const char *fun, int line);
+int UnlockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, const char *fun, int line);
 
 int PinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId);
 int unPinBuffer(PBufferPoolContext bufferPool, BUFFERID bufferId);

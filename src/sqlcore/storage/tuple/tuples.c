@@ -178,23 +178,19 @@ PRowColumnData TransformConstValueRowData(PConstValue constValue, PColumnDefInfo
 PExprDataInfo TransformConstExprValue(PConstValue constValue)
 {
     PExprDataInfo exprDataInfo = NULL;
-    int size = sizeof(ExprDataInfo) + sizeof(Data);
+    int size = sizeof(ExprDataInfo);
 
     exprDataInfo = (PExprDataInfo)AllocMem(size);
-    exprDataInfo->data = GetDataPointer(exprDataInfo);
 
     switch (constValue->vt)
     {
     case VT_INT:
     case VT_INTEGER:
     {
-        int *tmp = NULL;
-
         exprDataInfo->type = VT_INTEGER;
         exprDataInfo->size = sizeof(int);
 
-        tmp = (int *)(exprDataInfo->data);
-        *tmp = constValue->val.iData;
+        exprDataInfo->data.iData = constValue->val.iData;
     }
     break;
     case VT_VARCHAR:
@@ -205,9 +201,9 @@ PExprDataInfo TransformConstExprValue(PConstValue constValue)
         exprDataInfo->type = VT_STRING;
         exprDataInfo->size = len;
 
-        exprDataInfo->data->pData = (char *)AllocMem(len);
+        exprDataInfo->data.pData = (char *)AllocMem(len);
 
-        memcpy(exprDataInfo->data->pData, constValue->val.pData, len);
+        memcpy(exprDataInfo->data.pData, constValue->val.pData, len);
     }
     break;
     case VT_CHAR:
@@ -218,7 +214,7 @@ PExprDataInfo TransformConstExprValue(PConstValue constValue)
         exprDataInfo->size = len;
 
         /* string type receive from std io */
-        exprDataInfo->data->cData = *((char*)(constValue->val.pData));
+        exprDataInfo->data.cData = *((char*)(constValue->val.pData));
     }
     break;
     case VT_DOUBLE:
@@ -230,11 +226,11 @@ PExprDataInfo TransformConstExprValue(PConstValue constValue)
         /* digest type received that will be int or float. */
         if (constValue->vt == VT_FLOAT)
         {
-            exprDataInfo->data->fData = constValue->val.fData;
+            exprDataInfo->data.fData = constValue->val.fData;
         }
         else if (constValue->vt == VT_INT)
         {
-            exprDataInfo->data->fData = constValue->val.iData;
+            exprDataInfo->data.fData = constValue->val.iData;
         }
         hat_log("float type is not match values. ");
     }
@@ -243,7 +239,7 @@ PExprDataInfo TransformConstExprValue(PConstValue constValue)
         exprDataInfo->type = VT_FLOAT;
         exprDataInfo->size = sizeof(char);
 
-        exprDataInfo->data->cData = constValue->val.iData != 0 ? 'T' : 'F';
+        exprDataInfo->data.cData = constValue->val.iData != 0 ? 'T' : 'F';
         break;
     default:
         /* TODO resource release. */
@@ -280,7 +276,7 @@ PRowColumnData transFormExpr2RowColumnData(PExprDataInfo exprData, int attrIndex
             newColData = (PRowColumnData)AllocMem(dataSize);
 
             tmp = (int *)(newColData->data);
-            *tmp = exprData->data->iData;
+            *tmp = exprData->data.iData;
             newColData->size = dataSize;
         }
         break;
@@ -288,11 +284,11 @@ PRowColumnData transFormExpr2RowColumnData(PExprDataInfo exprData, int attrIndex
         case VT_VARCHAR:
         case VT_STRING:
         {
-            dataSize = hat_strlen(exprData->data->pData) + 1 + sizeof(RowColumnData);
+            dataSize = hat_strlen(exprData->data.pData) + 1 + sizeof(RowColumnData);
             newColData = (PRowColumnData)AllocMem(dataSize);
             newColData->size = dataSize;
 
-            memcpy(newColData->data, exprData->data->pData, dataSize);
+            memcpy(newColData->data, exprData->data.pData, dataSize);
         }
         break;
 
@@ -303,7 +299,7 @@ PRowColumnData transFormExpr2RowColumnData(PExprDataInfo exprData, int attrIndex
             newColData = (PRowColumnData)AllocMem(dataSize);
             newColData->size = dataSize;
 
-            newColData->data[0] = *((char*)(exprData->data->pData));            
+            newColData->data[0] = *((char*)(exprData->data.pData));            
         }
         break;
 
@@ -316,7 +312,7 @@ PRowColumnData transFormExpr2RowColumnData(PExprDataInfo exprData, int attrIndex
             newColData = (PRowColumnData)AllocMem(dataSize);
             newColData->size = dataSize;
 
-            *tmp = exprData->data->fData;    
+            *tmp = exprData->data.fData;    
         }
         break;
         
@@ -325,7 +321,7 @@ PRowColumnData transFormExpr2RowColumnData(PExprDataInfo exprData, int attrIndex
             newColData = (PRowColumnData)AllocMem(dataSize);
             newColData->size = dataSize;      
             
-            newColData->data[0] = exprData->data->iData == 1 ? 'T':'F';
+            newColData->data[0] = exprData->data.iData == 1 ? 'T':'F';
         break;
 
         default:

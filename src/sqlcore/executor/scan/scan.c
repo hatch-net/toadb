@@ -135,7 +135,8 @@ PTableRowDataPosition GetTblRowDataPosition(PScanTableRowData scanTblRow, PTable
 }
 
 
-PRowColumnData GetColRowDataEx(PTableRowDataPosition tblRowPosition, PColumnRef colDef, PAttrDataPosition attrPosData, int rowIndex, int *found, int setUsed)
+PRowColumnData GetColRowDataEx(PTableRowDataPosition tblRowPosition, PColumnRef colDef, 
+                                PAttrDataPosition attrPosData, int rowIndex, int *found, int setUsed)
 {
     PRowColumnData colData = NULL;
     PHeapItemData heapItem = NULL;

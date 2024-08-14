@@ -48,6 +48,8 @@ PQuery transformSelectStmt(PSelectStmt selectStmt);
 
 PQuery transformUpdateStmt(PUpdateStmt updateStmt);
 
+PQuery transformDeleteStmt(PDeleteStmt deleteStmt);
+
 /* DDL process */
 PQuery transformUtilityStmt(PNode parser);
 

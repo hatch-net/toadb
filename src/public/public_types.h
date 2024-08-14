@@ -16,12 +16,20 @@
 #define HAT_PUBLIC_TYPES_H_H
 
 typedef unsigned long long UINT64;
-typedef long long INT64;
+typedef long long           INT64;
 
-typedef unsigned char BYTE;
+typedef unsigned int       UINT32;
+typedef int                 INT32;
 
+typedef volatile unsigned int  atom_uint;
+typedef volatile unsigned long long  atom_uint64;
+typedef unsigned int  uint32;
 
-#define ThreadLocal __thread 
+typedef unsigned char       BYTE;
+
+typedef UINT64              XTID;
+
+#define ThreadLocal         __thread 
 
 
 #endif 

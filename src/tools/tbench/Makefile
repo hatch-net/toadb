@@ -39,7 +39,7 @@ INC = ${foreach dir, $(INC_DIR), -I$(dir)}
 ##########################################
 LDFLAGS += -lpthread
 ##########################################
-DEFINES += -DSTORAGE_FORMAT_PAX -DMEM_DEBUG
+DEFINES += -DSTORAGE_FORMAT_PAX 
 DEBUG_FLAGS = -g
 ##########################################		
 		

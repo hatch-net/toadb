@@ -16,6 +16,7 @@
 #include "memStack.h"
 #include "tfile.h"
 #include "memStack.h"
+#include "relCache.h"
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -31,7 +32,9 @@ static PVFVec GetVFec(PsgmrInfo smgrInfo, ForkType forkNum);
 static PVFVec DeleteVF(PVFVec head, PVFVec node);
 static PVFVec FindVF(PVFVec head, ForkType forknum);
 
-static void LockSmgr(LockState state);
+#define LockSmgrInfo(state) LockSmgr(state, __FUNCTION__, __LINE__)
+static void LockSmgr(LockState state, const char *fun, int line);
+
 static int AddFileInfoToSmgrContext(PsgmrInfo smgrInfo, PVFVec vpos);
 static int AddFileToSmgrContext(PVFVec vf, PFileHandle fileHandle);
 static int CloseFileSmgrContext();
@@ -50,7 +53,8 @@ int InitSmgr()
     smgrContext->fileOpenedNum = 0;
     smgrContext->vFileNum = 0;
     smgrContext->vfhead = NULL;
-    InitRWLock(&smgrContext->lock);
+    
+    InitRWLock(&smgrContext->lock, LB_SMGR_INFO);
     
     return 0;
 }
@@ -97,10 +101,10 @@ static int AddFileInfoToSmgrContext(PsgmrInfo smgrInfo, PVFVec vpos)
 
 static int AddFileToSmgrContext(PVFVec vf, PFileHandle fileHandle)
 {
-    LockVF(vf, LOCK_EXCLUSIVE);
+    LockVFInfo(vf, LOCK_EXCLUSIVE);
     vf->pfh = fileHandle;
     smgrContext->fileOpenedNum += 1;
-    LockVF(vf, RELEASE_LOCK);
+    LockVFInfo(vf, RELEASE_LOCK);
 }
 
 /* 
@@ -140,7 +144,7 @@ static PVFVec CreateVFVec(ForkType forkNum, PFileHandle fhd)
 
     vfInfo->forkNum = forkNum;
     vfInfo->pfh = fhd;
-    InitRWLock(&vfInfo->lock);
+    InitRWLock(&vfInfo->lock, LB_VFS_INFO);
 
     return vfInfo;
 }
@@ -149,11 +153,11 @@ static PVFVec AddVFec(PsgmrInfo smgrInfo, ForkType forkNum)
 {
     PVFVec vpos = NULL;
 
-    LockSmgr(LOCK_EXCLUSIVE);
+    LockSmgrInfo(LOCK_EXCLUSIVE);
     vpos = FindVF(smgrInfo->vfhead, forkNum);
     if(NULL != vpos)
     {
-        LockSmgr(RELEASE_LOCK);
+        LockSmgrInfo(RELEASE_LOCK);
         return vpos;
     }
 
@@ -161,7 +165,7 @@ static PVFVec AddVFec(PsgmrInfo smgrInfo, ForkType forkNum)
     INIT_DLIST_NODE(vpos->list);
 
     AddFileInfoToSmgrContext(smgrInfo, vpos);
-    LockSmgr(RELEASE_LOCK);
+    LockSmgrInfo(RELEASE_LOCK);
     return vpos;
 }
 
@@ -171,9 +175,9 @@ static PVFVec GetVFec(PsgmrInfo smgrInfo, ForkType forkNum)
     PVFVec vhead = NULL;
     char fname[FILE_PATH_MAX_LEN] = {0};
 
-    LockSmgr(LOCK_SHARED);
+    LockSmgrInfo(LOCK_SHARED);
     vhead = smgrInfo->vfhead;
-    LockSmgr(RELEASE_LOCK);
+    LockSmgrInfo(RELEASE_LOCK);
     if(NULL == vhead)
     {
         vpos = AddVFec(smgrInfo, forkNum);
@@ -222,9 +226,9 @@ PVFVec SearchVF(PVFVec head, ForkType forknum)
 {
     PVFVec vpos = NULL;
 
-    LockSmgr(LOCK_SHARED);   
+    LockSmgrInfo(LOCK_SHARED);   
     vpos = FindVF(head, forknum);
-    LockSmgr(RELEASE_LOCK);
+    LockSmgrInfo(RELEASE_LOCK);
 
     return vpos;
 }
@@ -335,17 +339,17 @@ int smgr_read(PVFVec vfInfo, PPageOffset pageOffset, char *page)
     INT64 offset = ((INT64)pageOffset->pageno - 1) * PAGE_MAX_SIZE;
     int readlen = 0;
 
-    LockVF(vfInfo, LOCK_EXCLUSIVE);
+    LockVFInfo(vfInfo, LOCK_EXCLUSIVE);
 
     readlen = FileReadPage(vfInfo->pfh, page, offset, PAGE_MAX_SIZE);
     if(PAGE_MAX_SIZE != readlen)
     {
-        LockVF(vfInfo, RELEASE_LOCK);
+        LockVFInfo(vfInfo, RELEASE_LOCK);
        // hat_error("read page error, readlen %d pageno:%d ", readlen, pageOffset->pageno);
         return -1;
     }
 
-    LockVF(vfInfo, RELEASE_LOCK);
+    LockVFInfo(vfInfo, RELEASE_LOCK);
 
     return readlen;
 }
@@ -355,16 +359,16 @@ int smgr_write(PVFVec vfInfo, PPageOffset pageOffset, PPageHeader page)
     INT64 ret = 0;
     INT64 offset = ((INT64)pageOffset->pageno - 1) * PAGE_MAX_SIZE;
 
-    LockVF(vfInfo, LOCK_EXCLUSIVE);
+    LockVFInfo(vfInfo, LOCK_EXCLUSIVE);
     
     ret = FileWritePage(vfInfo->pfh, offset, PAGE_MAX_SIZE, (char *)page);
     if(ret < PAGE_MAX_SIZE)
     {
-        LockVF(vfInfo, RELEASE_LOCK);
+        LockVFInfo(vfInfo, RELEASE_LOCK);
         return -1;
     }
     
-    LockVF(vfInfo, RELEASE_LOCK);
+    LockVFInfo(vfInfo, RELEASE_LOCK);
 
     if(config_fsync)
         ret |= FileSync(vfInfo->pfh);
@@ -386,12 +390,12 @@ int smgr_close(PVFVec vfInfo)
     if(config_fsync)
         ret |= FileSync(vfInfo->pfh);
     
-    LockVF(vfInfo, LOCK_EXCLUSIVE);
+    LockVFInfo(vfInfo, LOCK_EXCLUSIVE);
 
     FileClose(vfInfo->pfh);
     vfInfo->pfh = NULL;
 
-    LockVF(vfInfo, RELEASE_LOCK);
+    LockVFInfo(vfInfo, RELEASE_LOCK);
 
     smgrContext->fileOpenedNum -= 1;
     return ret;
@@ -403,7 +407,7 @@ int smgrRelease(PsgmrInfo sgmrInfo)
     PVFVec tpos = NULL;
     PVFVec tpos_prev = NULL;
 
-    LockSmgr(LOCK_EXCLUSIVE);
+    LockSmgrInfo(LOCK_EXCLUSIVE);
 
     head = sgmrInfo->vfhead;
     tpos = (PVFVec)sgmrInfo->vfend;
@@ -431,22 +435,22 @@ int smgrRelease(PsgmrInfo sgmrInfo)
         tpos = NULL;
     }
 
-    LockSmgr(RELEASE_LOCK);
+    LockSmgrInfo(RELEASE_LOCK);
 
     FreeMem(sgmrInfo);
 
     return 0;
 }
 
-void LockVF(PVFVec vfInfo, LockState state)
+void LockVF(PVFVec vfInfo, LockState state, const char *fun, int line)
 {
     switch(state)
     {
         case LOCK_EXCLUSIVE:
-            AcquireLock(&vfInfo->lock, RWLock_WRITE);
+            AcquireRWLockLocal(&vfInfo->lock, RWLock_WRITE, fun, line);
         break;
         case RELEASE_LOCK:
-            ReleaseRWLock(&vfInfo->lock, RWLock_WRITE);
+            ReleaseRWLockLocal(&vfInfo->lock, RWLock_WRITE, fun, line);
         break;
         default:
             hat_error("lockvf failure %d", state);
@@ -454,24 +458,24 @@ void LockVF(PVFVec vfInfo, LockState state)
     }
 }
 
-static void LockSmgr(LockState state)
+static void LockSmgr(LockState state, const char *fun, int line)
 {
     switch(state)
     {
         case LOCK_SHARED:
-            AcquireLock(&smgrContext->lock, RWLock_READ);
+            AcquireRWLockLocal(&smgrContext->lock, RWLock_READ, fun, line);
         break;
 
         case RELEASE_LOCK:
-            ReleaseRWLock(&smgrContext->lock, RWLock_WRITE);
+            ReleaseRWLockLocal(&smgrContext->lock, RWLock_NULL, fun, line);
         break;
 
         case LOCK_EXCLUSIVE:
-            AcquireLock(&smgrContext->lock, RWLock_WRITE);
+            AcquireRWLockLocal(&smgrContext->lock, RWLock_WRITE, fun, line);
         break;
 
         default:
-            hat_error("lockvf failure %d", state);
+            hat_error("LockSmgr failure %d", state);
         break;
     }
 }

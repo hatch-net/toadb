@@ -30,6 +30,8 @@ typedef enum NodeType
 	T_DropStmt,
 	T_InsertStmt,
 	T_UpdateStmt,
+	T_DeleteStmt,
+	T_TransactionStmt,
 	T_AttrName,
 	T_ValuesData,
 	T_SelectStmt,
@@ -41,6 +43,7 @@ typedef enum NodeType
 	T_BoolExpr,
 	T_RangeVar,
 	T_Alias,
+	T_FunctionClause,
 
 	/* query nodes */
 	T_RangTblEntry,

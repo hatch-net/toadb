@@ -352,7 +352,7 @@ extern int yylex \
 #undef YY_DECL
 #endif
 
-#line 183 "sqlcore/parser/scanner.l"
+#line 199 "sqlcore/parser/scanner.l"
 
 
 #line 359 "scanner.h"

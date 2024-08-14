@@ -45,7 +45,7 @@ typedef struct PlanState
 
     PNode       left;
     PNode       right;    
-    PScanState scanState;
+
 }PlanState, *PPlanState;
 
 typedef struct NestLoopState
@@ -99,8 +99,6 @@ typedef struct QueryTblState
     PlanStateNode stateNode;
 
     PNode       subplanState;
-
-    PScanState scanState;
 }QueryTblState, *PQueryTblState;
 
 typedef struct SelectState

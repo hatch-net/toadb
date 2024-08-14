@@ -151,20 +151,16 @@ int WriteRowData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
 int WriteRowItemData(PTableList tblInfo, PPageDataHeader page, PTableRowData row);
 int WriteRowItemDataWithHeader(PTableList tblInfo, PPageDataHeader page, PRowData row);
 
+int WriteRowOnePage(PTableList tblInfo, PPageDataHeader page, PRowData row);
 int WriteRowDataOnly(PTableList tblInfo, PPageDataHeader page, PRowData row, PItemData oldItem);
 
 PPageDataHeader ReadPage(PTableList tblInfo, int index, ForkType forkNum);
 int WritePage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum);
 int FlushPage(PTableList tblInfo, PPageDataHeader page, ForkType forkNum);
 
-
-int LockBuffer(PPageDataHeader page, int mode);
-int UnLockBuffer(PPageDataHeader page, int mode);
-
-
 #define LockPage(page, mode) LockBufferEx(page, mode, __FUNCTION__, __LINE__)
 #define UnLockPage(page, mode) UnLockBufferEx(page, mode, __FUNCTION__, __LINE__)
-int LockBufferEx(PPageDataHeader page, int mode, char *fun, int line);
-int UnLockBufferEx(PPageDataHeader page, int mode, char *fun, int line);
+int LockBufferEx(PPageDataHeader page, int mode, const char *fun, int line);
+int UnLockBufferEx(PPageDataHeader page, int mode, const char *fun, int line);
 
 #endif

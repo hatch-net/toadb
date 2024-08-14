@@ -10,6 +10,7 @@
 #include "queryNode.h"
 #include "memStack.h"
 #include "toadmain.h"
+#include "undopage.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -95,6 +96,8 @@ PTableRowData SeqscanNext(PExecState eState)
     pagelist = tblScan->scanPostionInfo->pageList;
     found = 1 - tblScan->scanPostionInfo->pageReset;
 
+    tblScan->snapshot = eState->snapshot;
+
     /* release column memory */
     ResetColumnInUsed(tblScan->scanPostionInfo);
 
@@ -149,12 +152,17 @@ PTableRowData SeqscanEnd(PExecState eState)
  * sequence scan all rows in the pages of the group. 
  * return rows maybe not all columns, which is specified by caller.
  */
+#define SCAN_NEXT_ROW               0
+#define SCAN_END_OF_FILE            1
+#define IGNORE_INVISIBILITY_COLUMNS 2
 PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
 {
     PRowColumnData *rawcolrow = NULL;
     PTableRowData rawrow = NULL;
     PScanTableRowData scantblRowData = NULL;
+    TupleVisibility isVisible = TUPLE_VISIBLE;
     int index = 0;
+    int flag = SCAN_NEXT_ROW;
 
     if(NULL == tbl || tblScan == NULL)
     {
@@ -167,6 +175,7 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
     /* column num which we want is not all the table defined. */
     rawcolrow = tblScan->scanPostionInfo->rowData->rowsData.columnData;
 
+NEXT:
     /* second get row data, column data is in the every group member pages. */
     for(index = 0; index < tblScan->scanPostionInfo->pageListNum; index++)
     {
@@ -178,17 +187,44 @@ PTableRowData SeqScanNextColumnOpt(PTableList tbl, PScanState tblScan)
         rawcolrow[index] = GetRowDataFromPageEx(tbl, &(tblScan->scanPostionInfo->searchPageList[index]));
         if(NULL == rawcolrow[index])
         {
+            flag = SCAN_END_OF_FILE;
             break;
-        }
+        }    
+
+        /* we jump over invisibility columns at the rest. */
+        if(IGNORE_INVISIBILITY_COLUMNS == flag)
+            continue;
+
+        isVisible = TupleVisibilitySatisfy(&rawcolrow[index]->headerData, tblScan->snapshot);
+        if(TUPLE_VISIBLE != isVisible)
+        {
+            /* when this row version is invisible, we continue to search version chain. */
+            rawcolrow[index] = CurrentReadVersion(rawcolrow[index], tblScan);
+            if(NULL == rawcolrow[index])
+            {
+                /* skip this rows */
+                flag = IGNORE_INVISIBILITY_COLUMNS;
+                continue;
+            }
+        }       
     }
 
     if(tblScan->scanPostionInfo->pageReset == HAT_TRUE)
         tblScan->scanPostionInfo->pageReset = HAT_FALSE;
 
     /* error or end ocur */
-    if(index != tblScan->scanPostionInfo->pageListNum)
+    if(SCAN_END_OF_FILE == flag)
     {
         return NULL;
+    }
+
+    if(IGNORE_INVISIBILITY_COLUMNS == flag)
+    {
+        /* TODO: release rawcolrows */
+        ResetColumnInUsed(tblScan->scanPostionInfo);
+
+        flag = SCAN_NEXT_ROW;
+        goto NEXT; 
     }
 
     hat_debug_seqscan("Sescan find raw row with rolumn data.");
@@ -346,8 +382,12 @@ static int ResetColumnInUsed(PScanPageInfo scanPageInfo)
             /* reset */
             inUsedFlag[index] = HAT_FALSE;
 
+            /* 
+             * under the cs_mode, rowdata is not stored in list,
+             * which is send to client, so we don't reserve memory space.
+             */
             if(runMode != TOADSERV_CS_MODE_SERVER)
-            continue;
+                continue;
         }
         
         hat_debug_seqscan_mem("reset column address:%p, index:%d", colData[index], index);

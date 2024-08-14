@@ -14,7 +14,7 @@
 
 #include "bufferPool.h"
 #include "public.h"
-
+#include "rwlock.h"
 
 #include <string.h>
 
@@ -47,7 +47,7 @@ int InitBufferPool(PBufferPoolContext bufferPool, int pageNum)
     bufferPool->bufferPool = (PBufferElement)(bufferPool->bufferDesc + bufferPool->bufferNum);
     bufferPool->freeList = (int *)(bufferPool->bufferPool + bufferPool->bufferNum);
 
-    InitRWLock(&bufferPool->lock);
+    InitRWLock(&bufferPool->lock, LB_BUFFER_POOL);
 
     /* initialize array value */
     for(index = 0; index < pageNum; index ++)
@@ -56,7 +56,7 @@ int InitBufferPool(PBufferPoolContext bufferPool, int pageNum)
         bufferPool->bufferDesc[index].isValid = BVF_INVALID;
         bufferPool->bufferDesc[index].isDirty = BUFFER_CLEAN;
 
-        InitRWLock(&bufferPool->bufferDesc[index].lock);
+        InitRWLock(&bufferPool->bufferDesc[index].lock, LB_BUFFER_BLOCKS);
     }
     bufferPool->freeList[pageNum-1] = Free_List_End; 
 
@@ -214,11 +214,14 @@ volatile BUFFERID start = 0;
 BUFFERID ClockSweep(PBufferPoolContext bufferPool)
 {
     BUFFERID id = start;
+    int ret = 0;
 
 RETRY:
     for( ; ; id = (id+1) % bufferPool->bufferNum)
     {
-        LockBufDesc(&bufferPool->bufferDesc[id], BUF_READ);
+        ret = TryLockBufDesc(&bufferPool->bufferDesc[id], BUF_READ);
+        if(ret <= 0)
+            continue;
 
         hat_debug_buffPool("clocksweep id=%d usedCnt=%d isValid=%d refCnt=%d", 
                     id, 
@@ -256,24 +259,18 @@ RETRY:
     return id;
 }
 
-int LockBufferDesc(PBufferDesc buffer, BufferLockMode mode)
+
+int LockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, const char *fun, int line)
 {
-    return AcquireRWLock(&buffer->lock, mode);
+    return AcquireRWLockLocal(&buffer->lock, mode, fun, line);
 }
 
-int UnlockBufferDesc(PBufferDesc buffer, BufferLockMode mode)
+int TryLockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, const char *fun, int line)
 {
-    return ReleaseRWLock(&buffer->lock, mode);
+    return TryAcquireRWLockLocal(&buffer->lock, mode, fun, line);
 }
 
-int LockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line)
+int UnlockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, const char *fun, int line)
 {
-    hat_debug_bufflock("LockBufferDescEx desc %p mode %d [%s][%d]", buffer, mode, fun, line);
-    return LockBufferDesc(buffer, mode);
-}
-
-int UnlockBufferDescEx(PBufferDesc buffer, BufferLockMode mode, char *fun, int line)
-{
-    hat_debug_bufflock("UnlockBufferDescEx desc %p mode %d [%s][%d]", buffer, mode, fun, line);
-    return UnlockBufferDesc(buffer, mode);
+    return ReleaseRWLockLocal(&buffer->lock, mode, fun, line);
 }

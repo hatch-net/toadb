@@ -83,7 +83,7 @@ int SyslogDestroy()
 void log_message(const char *filename, int lineno, const char *funcname, int level, const char *fmt, ...)
 {
     char logBuffer[LOG_BUFFER_LEN] = {0};
-    char *pos = NULL;
+    const char *pos = NULL;
     va_list vlist;
     int offset = 0;
     

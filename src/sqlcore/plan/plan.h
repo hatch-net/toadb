@@ -28,7 +28,7 @@ typedef struct PlanProcessor
     PNode rtableJoinList;
 }PlanProcessor, *PPlanProcessor;
 
-PList QueryPlan(PList queryTree);
+PList QueryPlan(PQuery queryTree);
 
 PNode SubPlanProcess(PQuery subQuery);
 
@@ -37,6 +37,8 @@ PNode subPlanSelectStmt(PPlanProcessor planProcessor);
 PNode subPlanInsertStmt(PPlan plan, PQuery subQuery);
 
 PNode subPlanUpdateStmt(PPlanProcessor planProcessor);
+
+PNode subPlanDeleteStmt(PPlanProcessor planProcessor);
 
 PNode GetValuesTypeRangTbl(PList rangTblList);
 

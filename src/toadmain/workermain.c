@@ -18,12 +18,16 @@
 #include "resourceMgr.h"
 #include "threadPool.h"
 #include "servprocess.h"
+#include "locallock.h"
+#include "transactionControl.h"
+#include "toadsignal.h"
+
 
 #include <pthread.h>
+#include <stdlib.h>
 
-
-int maxThreadWorkerNum = 16;
-int initThreadWorkerNum = 16;
+int maxThreadWorkerNum = 12;
+int initThreadWorkerNum = 12;
 int addThreadWorkerNum = 1;
 
 __thread PResourceOnwerPool resourceOnwerPool = NULL;
@@ -31,6 +35,8 @@ __thread PMemContextNode resourceMemContext = NULL;
 __thread PMemContextNode WorkerTopMemContext = NULL;
 
 extern PMemContextNode topMemContext;
+
+static void ToadExitSigProc (int signo);
 
 /* 
  * function is called in thread loop.
@@ -56,6 +62,8 @@ int InitWorker()
  */
 int ExitWorker() 
 {
+    /* release held lock. */
+    ReleaseLocalLock();
     MemMangerSwitchContext(topMemContext);
     MemMangerDeleteContext(topMemContext, WorkerTopMemContext);
     return 0;
@@ -64,6 +72,15 @@ int ExitWorker()
 int WorkerMain()
 {
     int ret = 0;
+
+    signal(SIGPIPE, SIG_IGN);
+    hatSignalSet(SIGINT, ToadExitSigProc);
+    hatSignalSet(SIGTERM, ToadExitSigProc);
+    hatSignalSet(SIGQUIT, ToadExitSigProc);
+
+    /* this is revert order. */
+    atexit(DestoryServer);
+    atexit(StopThreadPool);
 
     ret = InitializeServer();
     if(ret < 0)
@@ -77,10 +94,45 @@ int WorkerMain()
         return -1;
     }
 
+    ret = InitTransactContext(maxThreadWorkerNum);
+    if(ret < 0)
+    {
+        return -1;
+    }
+
     ServerLoop();
 
-    StopThreadPool();
-    DestoryServer();
+    //StopThreadPool();
+    //DestoryServer();
     return 0;
 }
 
+static void ToadExitSigProc (int signo)
+{
+    hat_log("receive signal %d", signo);
+    switch(signo)
+    {
+        case SIGINT:
+        /* 
+         * ctrl+c 
+         * this signal will terminal current query to continue process. 
+         */
+        break;
+        case SIGQUIT:
+        /* 
+         * ctrl + /
+         * some error ocur,  server will crash.
+        */
+
+        break;
+        case SIGTERM:
+        /* 
+         * kill, 
+         * query is cancel and server to exit normal. 
+         */
+        break;
+        default:
+        break;
+    }
+    exit(0);
+}

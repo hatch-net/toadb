@@ -15,6 +15,7 @@
 #ifndef HAT_SERVER_SOCKET_H_H
 #define HAT_SERVER_SOCKET_H_H
 
+#include "snapshot.h"
 
 typedef struct Portal *PPortal;
 typedef struct ServerContextInfo 
@@ -23,6 +24,9 @@ typedef struct ServerContextInfo
     int taskId;
     volatile int status;
     PPortal portal;
+
+    /* one client initial once . */
+    PSnapShotInfo snapshotPortal;
 }ServerContextInfo, *PServerContextInfo;
 
 
@@ -32,10 +36,11 @@ int ServerLoop();
 
 void StopServer();
 
-int DestoryServer();
+void DestoryServer();
 
 int GetTaskId();
 int GetServFd();
 PPortal GetServPortal();
+PSnapShotInfo GetServSnapShot();
 
 #endif 

@@ -65,6 +65,11 @@
 %token OFFSET
 %token AS
 %token BY
+%token BEGIN_T
+%token END_T
+%token ROLLBACK
+%token COMMIT
+%token SAVEPOINT
 
 /* types define */
 %token <sval> IDENT
@@ -77,16 +82,17 @@
 %token GREATER_EQ
 %token NOT_EQ
 
-%type <sval> tablename attr_type attr_name aliasname indirection_element
+%type <sval> tablename attr_type attr_name aliasname indirection_element function_name
 
 %type <list> stmt_list columndef_list values_list multi_values_list values_opt attr_name_list_opt attr_name_list 
              sort_clause limit_clause target_opt target_list 
              from_clause from_list set_clause_list set_target_list
              where_clause group_clause groupby_list
 
-%type <node> stmt create_stmt column_def drop_stmt insert_stmt value_data select_stmt select_clause target_element a_expr c_expr 
+%type <node> stmt create_stmt column_def drop_stmt insert_stmt delete_stmt value_data select_stmt select_clause target_element a_expr c_expr 
              columnRef exprConst groupby_element update_stmt set_target set_clause
              alias_clause_opt alias_clause  table_ref update_table_ref relation_expr constValues
+             transactionStmt function_expr 
             
 
 %start top_stmt
@@ -158,7 +164,6 @@ stmt_list:   ';'
         ;
 stmt:       select_stmt 
                     {
-                        hat_log("stmt select stmt");
                         $$ = $1;
                     }
             | insert_stmt
@@ -168,12 +173,20 @@ stmt:       select_stmt
             | update_stmt
                     {
                         $$ = $1;
+                    }
+            | delete_stmt
+                    {
+                        $$ = $1;
                     }                    
             | create_stmt
                     {
                         $$ = $1;
                     }
             | drop_stmt
+                    {
+                        $$ = $1;
+                    }
+            | transactionStmt
                     {
                         $$ = $1;
                     }
@@ -496,6 +509,10 @@ c_expr: columnRef
                     /* TODO: 暂不支持 */
                     $$ = NULL;
                 }
+        | function_expr
+                {
+                    $$ = $1;
+                }
     ;
 opt_indirection: /* empty */
         | opt_indirection indirection_element 
@@ -648,6 +665,21 @@ limit_clause: LIMIT INTNUMBER
                 }
         ;
 
+function_expr : function_name '(' ')'
+                {
+                    PFunctionClause node = NewNode(FunctionClause);
+                    node->functionName = $1;
+
+                    $$ = (PNode)node;
+                }
+            | function_name '(' '*' ')'
+                {
+                    PFunctionClause node = NewNode(FunctionClause);
+                    node->functionName = $1;
+
+                    $$ = (PNode)node;
+                }
+        ;
 create_stmt:        CREATE TABLE tablename '(' columndef_list ')'
                         {
                             PCreateStmt node = (PCreateStmt)CreateNode(sizeof(CreateStmt),T_CreateStmt);
@@ -839,6 +871,51 @@ value_data:     constValues
                         hat_log("insert stmt value_data ");
                     }
         ;
+delete_stmt: DELETE FROM update_table_ref from_clause where_clause 
+                    {
+                        PDeleteStmt node = NewNode(DeleteStmt);
+                        node->relation = $3;
+                        node->fromList = $4;
+                        node->whereList = $5;
+                        $$ = (PNode)node;
+                    }
+        ;
+transactionStmt: BEGIN_T 
+                    {                        
+                        PTransactionStmt node = NewNode(TransactionStmt);
+                        node->transactionTag = TF_BEGIN;
+
+                        $$ = (PNode)node;
+                    }
+                | END_T
+                    {
+                        PTransactionStmt node = NewNode(TransactionStmt);
+                        node->transactionTag = TF_END;
+
+                        $$ = (PNode)node;
+                    }
+                | ROLLBACK
+                    {
+                        PTransactionStmt node = NewNode(TransactionStmt);
+                        node->transactionTag = TF_ROLLBACK;
+
+                        $$ = (PNode)node;
+                    }
+                | COMMIT
+                    {
+                        PTransactionStmt node = NewNode(TransactionStmt);
+                        node->transactionTag = TF_COMMIT;
+
+                        $$ = (PNode)node;
+                    }
+                | SAVEPOINT
+                    {
+                        PTransactionStmt node = NewNode(TransactionStmt);
+                        node->transactionTag = TF_SAVEPOINT;
+
+                        $$ = (PNode)node;                        
+                    }
+        ;                    
 columndef_list:    column_def
                     {
                         if(NULL != $1)
@@ -926,11 +1003,16 @@ constValues :  STRING
                         hat_log("exprConst float :%f ", $1);      
                     }
         ;
-
+function_name : IDENT
+                    {
+                        $$ = $1;
+                    }
+        ;
 tablename:      IDENT
                     {
                         $$ = $1;
                     }
+        ;
 attr_name:      IDENT
                     {
                         $$ = $1;

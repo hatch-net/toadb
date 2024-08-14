@@ -73,10 +73,10 @@ static int stringGetSize(PExprDataInfo value)
 {
     char *str = NULL;
 
-    if((NULL == value) || (NULL == value->data) || (NULL == value->data->pData))
+    if((NULL == value) || (NULL == value->data.pData))
         return -1;
 
-    str = value->data->pData;
+    str = value->data.pData;
     
     value->size = hat_strlen(str);
 
@@ -86,8 +86,8 @@ static int stringGetSize(PExprDataInfo value)
 static PExprDataInfo stringGreaterOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = 0;
 
     stringGetSize(leftvalue);
@@ -121,8 +121,8 @@ static PExprDataInfo stringGreaterOperator(PExprDataInfo leftvalue, PExprDataInf
 static PExprDataInfo stringGreaterEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = 0;
 
     stringGetSize(leftvalue);
@@ -156,8 +156,8 @@ static PExprDataInfo stringGreaterEqualOperator(PExprDataInfo leftvalue, PExprDa
 static PExprDataInfo stringEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = 0;
 
     stringGetSize(leftvalue);
@@ -191,8 +191,8 @@ static PExprDataInfo stringEqualOperator(PExprDataInfo leftvalue, PExprDataInfo 
 static PExprDataInfo stringLessEqualOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = 0;
 
     stringGetSize(leftvalue);
@@ -226,8 +226,8 @@ static PExprDataInfo stringLessEqualOperator(PExprDataInfo leftvalue, PExprDataI
 static PExprDataInfo stringLessOperator(PExprDataInfo leftvalue, PExprDataInfo rightvalue, PExprDataInfo resExprData)
 {
     int result = HAT_FALSE;
-    char *str1 = leftvalue->data->pData;
-    char *str2 = rightvalue->data->pData;
+    char *str1 = leftvalue->data.pData;
+    char *str2 = rightvalue->data.pData;
     int len = 0;
 
     stringGetSize(leftvalue);

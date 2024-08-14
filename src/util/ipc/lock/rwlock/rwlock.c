@@ -14,12 +14,14 @@
 
 #include "rwlock.h"
 #include "public.h"
-#include "errno.h"
+#include "atom.h"
+
+#include <errno.h>
 
 #define hat_rwlock_debug(...) 
 //#define hat_rwlock_debug(...)  log_report(LOG_DEBUG, __VA_ARGS__) 
 
-int InitRWLock(PRWLockInfo lock)
+int InitRWLock(PRWLockInfo lock, LockBranch branch)
 {
     if(NULL == lock)
         return -1;
@@ -27,7 +29,61 @@ int InitRWLock(PRWLockInfo lock)
     pthread_rwlock_init(&lock->rwlock, NULL);
 
     lock->lockMode = RWLock_NULL;
+    
+    lock->branch = branch;
+    lock->rlockCnt = 0;
+
     return 0;
+}
+
+/*
+ * return values:
+ * 0 , not acquired, will be waiting.
+ * 1, acquired success
+ * -1, other error
+*/
+static int TryAcquireRWLock(PRWLockInfo lock, RWLockMode mode)
+{
+    int ret = 0;
+
+    if(NULL == lock)
+        return -1;
+    
+    hat_rwlock_debug("Try Aquire begin lock %p mode:%d - %d ,reqmode:%d", lock, lock->lockMode, lock->rlockCnt, mode);
+
+    if(mode == RWLock_READ)
+    {
+        ret = pthread_rwlock_tryrdlock(&lock->rwlock); // 读者加读锁
+    }
+    else if(mode == RWLock_WRITE)
+    {
+        ret = pthread_rwlock_trywrlock(&lock->rwlock); // 写者加写锁
+    }
+    else 
+    {
+        return -1;
+    }
+
+    if(lock->lockMode != mode)
+        lock->lockMode = mode;
+
+    if(lock->lockMode == RWLock_READ)
+        atomic_fetch_add(&lock->rlockCnt, 1);
+
+    hat_rwlock_debug("try Aquire end lock %p mode:%d, reqmode:%d cnt:%d ret:%d", lock, lock->lockMode, mode, lock->rlockCnt, ret);
+
+    if(ret == 0)
+    {
+        /* acquired */
+        return 1;
+    }
+    
+    if(ret == EBUSY)
+    {
+        return 0;
+    }
+
+    return -1;
 }
 
 int AcquireRWLock(PRWLockInfo lock, RWLockMode mode) 
@@ -61,6 +117,11 @@ RETRY:
             goto RETRY;
         }
 
+        if(EDEADLK == ret)
+        {
+            hat_error("deadlock %p mode:%d ret[%d] error[%d]", lock, mode, ret, errno);
+        }
+
         hat_error("lock %p mode:%d failure ret[%d] erro[%d]", lock, mode, ret, errno);
         return -1;
     }
@@ -69,7 +130,7 @@ RETRY:
         lock->lockMode = mode;
 
     if(lock->lockMode == RWLock_READ)
-        lock->rlockCnt += 1;
+        atomic_fetch_add(&lock->rlockCnt, 1);
 
     hat_rwlock_debug("Aquire end  lock %p mode:%d, reqmode:%d cnt:%d", lock, lock->lockMode, mode, lock->rlockCnt);
     return 0;
@@ -84,7 +145,7 @@ int ReleaseRWLock(PRWLockInfo lock, RWLockMode mode)
     hat_rwlock_debug("release begin lock %p mode:%d - %d ,reqmode:%d", lock, lock->lockMode, lock->rlockCnt, mode);
     if((lock->lockMode != mode) && (mode != RWLock_NULL))
     {
-        //hat_error("lock %p mode:%d , release mode:%d cnt:%d", lock, lock->lockMode, mode, lock->rlockCnt);
+        ; // hat_error("lock %p mode:%d , release mode:%d cnt:%d", lock, lock->lockMode, mode, lock->rlockCnt);
     }
 
     /* TODO: record lock mode, check mode consisdence. */    
@@ -92,7 +153,7 @@ int ReleaseRWLock(PRWLockInfo lock, RWLockMode mode)
         lock->lockMode = RWLock_NULL;
     else 
     {
-        if(--lock->rlockCnt == 0)
+        if(atomic_fetch_sub(&lock->rlockCnt, 1) == 0)
             lock->lockMode = RWLock_NULL;
     }
     ret = pthread_rwlock_unlock(&lock->rwlock); // 释放写锁  
@@ -116,14 +177,29 @@ int DestroyRWLock(PRWLockInfo lock)
     return 0;
 }
 
-int ReleaseRWLockEx(PRWLockInfo lock, RWLockMode mode, char *fun, int line)
+int ReleaseRWLockEx(PRWLockInfo lock, RWLockMode mode, const char *fun, int line)
 {
-    hat_rwlock_debug("ReleaseRWLockEx lock %p reqmode:%d [%s][%d]", lock, mode, fun, line);
+    hat_rwlock_debug("ReleaseRWLockEx lock %p mode:%d readcnt:%d branch:%d reqmode:%d [%s][%d]", 
+                        lock, 
+                        lock->lockMode, lock->rlockCnt, lock->branch, 
+                        mode, fun, line);
     return ReleaseRWLock(lock, mode);
 }
 
-int AcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, char *fun, int line)
+int AcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, const char *fun, int line)
 {
-    hat_rwlock_debug("AcquireRWLockEx lock %p reqmode:%d [%s][%d]", lock, mode, fun, line);
+    hat_rwlock_debug("AcquireRWLockEx lock %p mode:%d readcnt:%d branch:%d reqmode:%d [%s][%d]", 
+                        lock, 
+                        lock->lockMode, lock->rlockCnt, lock->branch, 
+                        mode, fun, line);
     return AcquireRWLock(lock, mode);
+}
+
+int TryAcquireRWLockEx(PRWLockInfo lock, RWLockMode mode, const char *fun, int line)
+{
+    hat_rwlock_debug("TryAcquireRWLockEx lock %p mode:%d readcnt:%d branch:%d reqmode:%d [%s][%d]", 
+                        lock, 
+                        lock->lockMode, lock->rlockCnt, lock->branch, 
+                        mode, fun, line);
+    return TryAcquireRWLock(lock, mode);
 }
